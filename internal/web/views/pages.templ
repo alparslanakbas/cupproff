@@ -33,10 +33,18 @@ type Card struct {
 	Available bool
 }
 
-templ MarketHome(p Page, heading string, cards []Card) {
+// Pager links the pages of a listing with plain, crawlable links.
+type Pager struct {
+	Page, Pages int
+	Total       int
+	PrevURL     string
+	NextURL     string
+}
+
+templ MarketHome(p Page, heading string, cards []Card, pg Pager) {
 	@Layout(p) {
 		<h1>{ heading }</h1>
-		<p class="lede">{ fmt.Sprintf("%d coffees from independent roasters, with the price each one shows today.", len(cards)) }</p>
+		<p class="lede">{ fmt.Sprintf("%d coffees from independent roasters, with the price each one shows today.", pg.Total) }</p>
 		<ul class="cards">
 			for _, c := range cards {
 				<li class="card">
@@ -62,6 +70,17 @@ templ MarketHome(p Page, heading string, cards []Card) {
 				</li>
 			}
 		</ul>
+		if pg.Pages > 1 {
+			<nav class="pager" aria-label="Pages">
+				if pg.PrevURL != "" {
+					<a href={ templ.SafeURL(pg.PrevURL) } rel="prev">Previous</a>
+				}
+				<span class="muted">{ fmt.Sprintf("Page %d of %d", pg.Page, pg.Pages) }</span>
+				if pg.NextURL != "" {
+					<a href={ templ.SafeURL(pg.NextURL) } rel="next">Next</a>
+				}
+			</nav>
+		}
 	}
 }
 
@@ -76,6 +95,8 @@ type Offer struct {
 	Low30     string
 	Available bool
 	BuyURL    string
+	Chart     string // inline SVG from sparkline, "" when there is no history yet
+	Since     string // date of the first reading
 }
 
 // Coffee is a coffee page.
@@ -99,13 +120,19 @@ templ CoffeePage(p Page, c Coffee) {
 				<h1>{ c.Title }</h1>
 				<p class="muted">Roasted by <a href={ templ.SafeURL(c.RoasterURL) } rel="nofollow">{ c.Roaster }</a></p>
 				<table class="offers">
-					<thead><tr><th>Bag</th><th>Price</th><th>Per kg</th><th>Verdict</th><th></th></tr></thead>
+					<thead><tr><th>Bag</th><th>Price</th><th>Per kg</th><th>History</th><th>Verdict</th><th></th></tr></thead>
 					<tbody>
 						for _, o := range c.Offers {
 							<tr>
 								<td>{ o.Size }</td>
 								<td class="price">{ o.Price }</td>
 								<td class="muted">{ o.PerKilo }</td>
+								<td class="history">
+									if o.Chart != "" {
+										@templ.Raw(o.Chart)
+									}
+									<span class="muted small">since { o.Since }</span>
+								</td>
 								<td>
 									if o.RealDrop > 0 {
 										<span class="badge real">{ fmt.Sprintf("Real drop −%d%%", o.RealDrop) }</span>

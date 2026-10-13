@@ -11,6 +11,11 @@ type Page struct {
 	NoIndex     bool
 }
 
+// StylesheetURL carries a content hash (set by the web package at start-up),
+// so a deploy that changes the CSS changes the URL and no visitor keeps a
+// day-old cached copy.
+var StylesheetURL = "/static/site.css"
+
 // Alternate is one hreflang sibling of the page.
 type Alternate struct {
 	Lang string
@@ -38,7 +43,7 @@ templ Layout(p Page) {
 			for _, a := range p.Alternates {
 				<link rel="alternate" hreflang={ a.Lang } href={ templ.SafeURL(a.URL) }/>
 			}
-			<link rel="stylesheet" href="/static/site.css"/>
+			<link rel="stylesheet" href={ StylesheetURL }/>
 			if p.JSONLD != "" {
 				@templ.Raw(`<script type="application/ld+json">` + p.JSONLD + `</script>`)
 			}

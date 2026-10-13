@@ -46,6 +46,19 @@ func (q *Queries) CoffeeBySlug(ctx context.Context, slug string) (CoffeeBySlugRo
 	return i, err
 }
 
+const countCoffees = `-- name: CountCoffees :one
+SELECT count(DISTINCT c.id)
+FROM coffees c
+JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
+`
+
+func (q *Queries) CountCoffees(ctx context.Context, market string) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoffees, market)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertPricePoint = `-- name: InsertPricePoint :exec
 INSERT INTO price_points (offer_id, seen_at, price_minor, compare_at_minor, available)
 VALUES ($1, $2, $3, $4, $5)
@@ -113,22 +126,34 @@ func (q *Queries) ListActiveRoasters(ctx context.Context) ([]ListActiveRoastersR
 }
 
 const listCoffees = `-- name: ListCoffees :many
-SELECT DISTINCT ON (c.id)
-    c.slug, c.title, c.image_url, r.name AS roaster_name,
-    o.size_label, o.weight_grams, o.currency,
-    lp.price_minor, lp.compare_at_minor, lp.available
-FROM coffees c
-JOIN roasters r ON r.id = c.roaster_id
-JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
-JOIN LATERAL (
-    SELECT p.price_minor, p.compare_at_minor, p.available
-    FROM price_points p
-    WHERE p.offer_id = o.id
-    ORDER BY p.seen_at DESC
-    LIMIT 1
-) lp ON true
-ORDER BY c.id, o.weight_grams
+SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams,
+       x.currency, x.price_minor, x.compare_at_minor, x.available
+FROM (
+    SELECT DISTINCT ON (c.id)
+        c.slug, c.title, c.image_url, r.name AS roaster_name,
+        o.size_label, o.weight_grams, o.currency,
+        lp.price_minor, lp.compare_at_minor, lp.available
+    FROM coffees c
+    JOIN roasters r ON r.id = c.roaster_id
+    JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
+    JOIN LATERAL (
+        SELECT p.price_minor, p.compare_at_minor, p.available
+        FROM price_points p
+        WHERE p.offer_id = o.id
+        ORDER BY p.seen_at DESC
+        LIMIT 1
+    ) lp ON true
+    ORDER BY c.id, o.weight_grams
+) x
+ORDER BY x.title, x.slug
+LIMIT $3 OFFSET $2
 `
+
+type ListCoffeesParams struct {
+	Market   string
+	Skip     int32
+	PageSize int32
+}
 
 type ListCoffeesRow struct {
 	Slug           string
@@ -145,8 +170,8 @@ type ListCoffeesRow struct {
 
 // Market listing: one card per coffee, showing its smallest bag that was
 // seen in the last 48 hours (older offers are stale, not current prices).
-func (q *Queries) ListCoffees(ctx context.Context, market string) ([]ListCoffeesRow, error) {
-	rows, err := q.db.Query(ctx, listCoffees, market)
+func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]ListCoffeesRow, error) {
+	rows, err := q.db.Query(ctx, listCoffees, arg.Market, arg.Skip, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +289,40 @@ func (q *Queries) OffersForCoffee(ctx context.Context, arg OffersForCoffeeParams
 	return items, nil
 }
 
+const priceHistory = `-- name: PriceHistory :many
+SELECT offer_id, seen_at, price_minor
+FROM price_points
+WHERE offer_id = ANY($1::bigint[]) AND seen_at > now() - interval '180 days'
+ORDER BY offer_id, seen_at
+`
+
+type PriceHistoryRow struct {
+	OfferID    int64
+	SeenAt     pgtype.Timestamptz
+	PriceMinor int64
+}
+
+// Price history of a coffee's offers, oldest first, for the charts.
+func (q *Queries) PriceHistory(ctx context.Context, offerIds []int64) ([]PriceHistoryRow, error) {
+	rows, err := q.db.Query(ctx, priceHistory, offerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PriceHistoryRow
+	for rows.Next() {
+		var i PriceHistoryRow
+		if err := rows.Scan(&i.OfferID, &i.SeenAt, &i.PriceMinor); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const roasterBySlug = `-- name: RoasterBySlug :one
 SELECT id, slug, name, base_url, platform
 FROM roasters
@@ -289,6 +348,43 @@ func (q *Queries) RoasterBySlug(ctx context.Context, slug string) (RoasterBySlug
 		&i.Platform,
 	)
 	return i, err
+}
+
+const roasterFreshness = `-- name: RoasterFreshness :many
+SELECT r.slug, max(o.last_seen_at)::timestamptz AS last_seen
+FROM roasters r
+LEFT JOIN coffees c ON c.roaster_id = r.id
+LEFT JOIN offers o ON o.coffee_id = c.id
+WHERE r.active
+GROUP BY r.slug
+ORDER BY r.slug
+`
+
+type RoasterFreshnessRow struct {
+	Slug     string
+	LastSeen pgtype.Timestamptz
+}
+
+// When each active roaster was last read, for the health endpoint. A roaster
+// with no offers at all has a NULL last_seen.
+func (q *Queries) RoasterFreshness(ctx context.Context) ([]RoasterFreshnessRow, error) {
+	rows, err := q.db.Query(ctx, roasterFreshness)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RoasterFreshnessRow
+	for rows.Next() {
+		var i RoasterFreshnessRow
+		if err := rows.Scan(&i.Slug, &i.LastSeen); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const sitemapCoffees = `-- name: SitemapCoffees :many

@@ -37,21 +37,32 @@ ON CONFLICT (offer_id, seen_at) DO NOTHING;
 -- Market listing: one card per coffee, showing its smallest bag that was
 -- seen in the last 48 hours (older offers are stale, not current prices).
 -- name: ListCoffees :many
-SELECT DISTINCT ON (c.id)
-    c.slug, c.title, c.image_url, r.name AS roaster_name,
-    o.size_label, o.weight_grams, o.currency,
-    lp.price_minor, lp.compare_at_minor, lp.available
+SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams,
+       x.currency, x.price_minor, x.compare_at_minor, x.available
+FROM (
+    SELECT DISTINCT ON (c.id)
+        c.slug, c.title, c.image_url, r.name AS roaster_name,
+        o.size_label, o.weight_grams, o.currency,
+        lp.price_minor, lp.compare_at_minor, lp.available
+    FROM coffees c
+    JOIN roasters r ON r.id = c.roaster_id
+    JOIN offers o ON o.coffee_id = c.id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
+    JOIN LATERAL (
+        SELECT p.price_minor, p.compare_at_minor, p.available
+        FROM price_points p
+        WHERE p.offer_id = o.id
+        ORDER BY p.seen_at DESC
+        LIMIT 1
+    ) lp ON true
+    ORDER BY c.id, o.weight_grams
+) x
+ORDER BY x.title, x.slug
+LIMIT @page_size OFFSET @skip;
+
+-- name: CountCoffees :one
+SELECT count(DISTINCT c.id)
 FROM coffees c
-JOIN roasters r ON r.id = c.roaster_id
-JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
-JOIN LATERAL (
-    SELECT p.price_minor, p.compare_at_minor, p.available
-    FROM price_points p
-    WHERE p.offer_id = o.id
-    ORDER BY p.seen_at DESC
-    LIMIT 1
-) lp ON true
-ORDER BY c.id, o.weight_grams;
+JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours';
 
 -- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,
@@ -102,3 +113,21 @@ FROM coffees c
 JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
 GROUP BY c.slug
 ORDER BY c.slug;
+
+-- Price history of a coffee's offers, oldest first, for the charts.
+-- name: PriceHistory :many
+SELECT offer_id, seen_at, price_minor
+FROM price_points
+WHERE offer_id = ANY(@offer_ids::bigint[]) AND seen_at > now() - interval '180 days'
+ORDER BY offer_id, seen_at;
+
+-- When each active roaster was last read, for the health endpoint. A roaster
+-- with no offers at all has a NULL last_seen.
+-- name: RoasterFreshness :many
+SELECT r.slug, max(o.last_seen_at)::timestamptz AS last_seen
+FROM roasters r
+LEFT JOIN coffees c ON c.roaster_id = r.id
+LEFT JOIN offers o ON o.coffee_id = c.id
+WHERE r.active
+GROUP BY r.slug
+ORDER BY r.slug;

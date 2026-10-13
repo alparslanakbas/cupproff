@@ -2,7 +2,9 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +38,10 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	static, _ := fs.Sub(staticFiles, "static")
 	files := http.FileServerFS(static)
+	if css, err := fs.ReadFile(static, "site.css"); err == nil {
+		sum := sha256.Sum256(css)
+		views.StylesheetURL = "/static/site.css?v=" + hex.EncodeToString(sum[:4])
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.home)
@@ -46,6 +53,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{market}", s.addSlash)
 	mux.HandleFunc("GET /{market}/{$}", s.marketHome)
 	mux.HandleFunc("GET /{market}/coffee/{slug}", s.coffee)
+	// A "GET" pattern also answers HEAD, which uptime monitors send (the
+	// sister sites' monitor once stayed red because their endpoint didn't).
+	mux.HandleFunc("GET /api/health/sources", s.health)
 	mux.HandleFunc("/", s.notFound)
 	return mux
 }
@@ -77,7 +87,30 @@ func (s *Server) marketHome(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	rows, err := s.Q.ListCoffees(r.Context(), m.Code)
+	// Page 1 is the bare market URL; ?page=1 or a page past the end is not a
+	// page of ours (404), so each listing page has exactly one address.
+	page := 1
+	if raw := r.URL.Query().Get("page"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 2 {
+			s.notFound(w, r)
+			return
+		}
+		page = n
+	}
+	total, err := s.Q.CountCoffees(r.Context(), m.Code)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	pages := max(1, int((total+pageSize-1)/pageSize))
+	if page > pages {
+		s.notFound(w, r)
+		return
+	}
+	rows, err := s.Q.ListCoffees(r.Context(), db.ListCoffeesParams{
+		Market: m.Code, PageSize: pageSize, Skip: int32((page - 1) * pageSize),
+	})
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -97,14 +130,37 @@ func (s *Server) marketHome(w http.ResponseWriter, r *http.Request) {
 		}
 		cards = append(cards, card)
 	}
-	url := s.SiteURL + "/" + m.Code + "/"
+	base := "/" + m.Code + "/"
+	pageURL := func(n int) string {
+		if n == 1 {
+			return base
+		}
+		return fmt.Sprintf("%s?page=%d", base, n)
+	}
+	pg := views.Pager{Page: page, Pages: pages, Total: int(total)}
+	if page > 1 {
+		pg.PrevURL = pageURL(page - 1)
+	}
+	if page < pages {
+		pg.NextURL = pageURL(page + 1)
+	}
+	title := "Specialty coffee prices in the " + m.Name + " — CupProof"
+	if page > 1 {
+		title = fmt.Sprintf("Specialty coffee prices in the %s, page %d — CupProof", m.Name, page)
+	}
+	// Each page is its own canonical (not page 1): pointing every page at
+	// page 1 would tell search engines to drop the coffees listed further on.
+	url := s.SiteURL + pageURL(page)
 	p := views.Page{
-		Title: "Specialty coffee prices in the " + m.Name + " — CupProof", Lang: m.Lang,
-		Description: fmt.Sprintf("%d coffees from independent roasters with today's price and price history.", len(cards)),
+		Title: title, Lang: m.Lang,
+		Description: fmt.Sprintf("%d coffees from independent roasters with today's price and price history.", total),
 		Canonical:   url, Alternates: []views.Alternate{{Lang: m.Lang, URL: url}, {Lang: "x-default", URL: url}},
 	}
-	s.render(w, r, http.StatusOK, views.MarketHome(p, "Coffee prices in the "+m.Name, cards))
+	s.render(w, r, http.StatusOK, views.MarketHome(p, "Coffee prices in the "+m.Name, cards, pg))
 }
+
+// pageSize is the number of coffees per listing page.
+const pageSize = 48
 
 func (s *Server) coffee(w http.ResponseWriter, r *http.Request) {
 	m, ok := market.ByCode(r.PathValue("market"))
@@ -136,6 +192,21 @@ func (s *Server) coffee(w http.ResponseWriter, r *http.Request) {
 	if c.ImageUrl != nil {
 		view.ImageURL = cdnImage(*c.ImageUrl, 960)
 	}
+	// One query for the history of every size, not one per row.
+	ids := make([]int64, len(rows))
+	for i, o := range rows {
+		ids[i] = o.ID
+	}
+	hist, err := s.Q.PriceHistory(r.Context(), ids)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	history := map[int64][]pricePoint{}
+	for _, h := range hist {
+		history[h.OfferID] = append(history[h.OfferID], pricePoint{At: h.SeenAt.Time, Minor: h.PriceMinor})
+	}
+	now := time.Now()
 	ld := productLD{Context: "https://schema.org", Type: "Product", Name: c.Title,
 		Brand: &thing{Type: "Brand", Name: c.RoasterName}, Image: view.ImageURL}
 	for _, o := range rows {
@@ -153,6 +224,10 @@ func (s *Server) coffee(w http.ResponseWriter, r *http.Request) {
 		}
 		if o.Low30 > 0 {
 			ov.Low30 = money(o.Low30, o.Currency)
+		}
+		if pts := history[o.ID]; len(pts) > 0 {
+			ov.Since = pts[0].At.UTC().Format("Jan 2, 2006")
+			ov.Chart = sparkline(pts, now, 120, 32, fmt.Sprintf("%s price since %s", o.SizeLabel, ov.Since))
 		}
 		view.Offers = append(view.Offers, ov)
 		availability := "https://schema.org/OutOfStock"
@@ -225,6 +300,48 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	io.WriteString(w, b.String())
+}
+
+// staleAfter is how long a roaster may go unread before the health check
+// fails: one daily read plus slack, and well under the 48 hours after which
+// its offers drop off the pages, so an alarm comes before coffees vanish.
+const staleAfter = 30 * time.Hour
+
+// health answers 503 when any active roaster hasn't been read recently, so
+// an uptime monitor notices a silently broken reader.
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Q.RoasterFreshness(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	type source struct {
+		Roaster  string     `json:"roaster"`
+		LastSeen *time.Time `json:"lastSeen"`
+		Stale    bool       `json:"stale"`
+	}
+	out := struct {
+		Stale   int      `json:"stale"`
+		Sources []source `json:"sources"`
+	}{}
+	for _, row := range rows {
+		src := source{Roaster: row.Slug, Stale: true}
+		if row.LastSeen.Valid {
+			t := row.LastSeen.Time.UTC()
+			src.LastSeen = &t
+			src.Stale = time.Since(t) > staleAfter
+		}
+		if src.Stale {
+			out.Stale++
+		}
+		out.Sources = append(out.Sources, src)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if out.Stale > 0 {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	json.NewEncoder(w).Encode(out)
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {

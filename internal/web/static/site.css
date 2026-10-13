@@ -58,7 +58,12 @@ h1 { font: 500 2rem/1.2 var(--font-display); margin: 0 0 .5rem; }
 .offers th, .offers td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 .offers th { font-weight: 500; color: var(--muted); font-size: .9rem; }
 .buy { white-space: nowrap; }
+.history { color: var(--accent); white-space: nowrap; }
+.history .spark { display: block; }
+.history .small { display: block; }
+.offers td:first-child { white-space: nowrap; }
+.pager { display: flex; gap: 1.5rem; align-items: baseline; justify-content: center; margin-top: 2rem; }
 @media (max-width: 720px) {
   .coffee { grid-template-columns: 1fr; }
-  .offers th:nth-child(3), .offers td:nth-child(3) { display: none; }
+  .offers th:nth-child(3), .offers td:nth-child(3), .offers th:nth-child(4), .offers td:nth-child(4) { display: none; }
 }
