@@ -202,12 +202,58 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 }
 
 const offersForCoffee = `-- name: OffersForCoffee :many
+WITH o AS (
+    SELECT id, size_label, weight_grams, currency, variant_id
+    FROM offers
+    WHERE coffee_id = $1 AND market = $2 AND last_seen_at > now() - interval '48 hours'
+),
+seg AS (
+    SELECT a.offer_id,
+           max(a.seen_at) FILTER (WHERE a.seen_at - a.prev > interval '72 hours') AS restart
+    FROM (
+        SELECT p.offer_id, p.seen_at,
+               lag(p.seen_at) OVER (PARTITION BY p.offer_id ORDER BY p.seen_at) AS prev
+        FROM price_points p
+        JOIN o ON o.id = p.offer_id
+        WHERE p.seen_at >= now() - interval '30 days'
+    ) a
+    GROUP BY a.offer_id
+),
+win AS (
+    SELECT p.offer_id, p.price_minor, p.seen_at
+    FROM price_points p
+    JOIN o ON o.id = p.offer_id
+    LEFT JOIN seg ON seg.offer_id = p.offer_id
+    WHERE p.seen_at >= COALESCE(seg.restart, now() - interval '30 days')
+),
+low AS (
+    SELECT offer_id, min(price_minor) AS low30
+    FROM win
+    GROUP BY offer_id
+),
+usual AS (
+    SELECT d.offer_id, max(d.price_minor) AS usual
+    FROM (
+        SELECT offer_id, price_minor
+        FROM win
+        GROUP BY offer_id, price_minor
+        HAVING count(DISTINCT (seen_at AT TIME ZONE 'UTC')::date) >= 7
+    ) d
+    GROUP BY d.offer_id
+),
+alltime AS (
+    SELECT p.offer_id, min(p.price_minor) AS low, min(p.seen_at) AS first
+    FROM price_points p
+    JOIN o ON o.id = p.offer_id
+    GROUP BY p.offer_id
+)
 SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
        lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
-       -- 0 means "none yet": prices are > 0 by CHECK, so 0 is never a real price.
-       COALESCE(s.low30, 0)::bigint AS low30,
-       COALESCE(u.usual, 0)::bigint AS usual
-FROM offers o
+       COALESCE(low.low30, 0)::bigint AS low30,
+       COALESCE(usual.usual, 0)::bigint AS usual,
+       COALESCE(seg.restart, alltime.first)::timestamptz AS tracked_since,
+       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0)::bigint AS lowest_tracked
+FROM o
 JOIN LATERAL (
     SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
     FROM price_points p
@@ -215,22 +261,10 @@ JOIN LATERAL (
     ORDER BY p.seen_at DESC
     LIMIT 1
 ) lp ON true
-JOIN LATERAL (
-    SELECT min(p.price_minor) AS low30
-    FROM price_points p
-    WHERE p.offer_id = o.id AND p.seen_at > now() - interval '30 days'
-) s ON true
-LEFT JOIN LATERAL (
-    SELECT max(d.price_minor) AS usual
-    FROM (
-        SELECT p.price_minor
-        FROM price_points p
-        WHERE p.offer_id = o.id AND p.seen_at > now() - interval '30 days'
-        GROUP BY p.price_minor
-        HAVING count(DISTINCT (p.seen_at AT TIME ZONE 'UTC')::date) >= 7
-    ) d
-) u ON true
-WHERE o.coffee_id = $1 AND o.market = $2 AND o.last_seen_at > now() - interval '48 hours'
+LEFT JOIN seg ON seg.offer_id = o.id
+LEFT JOIN low ON low.offer_id = o.id
+LEFT JOIN usual ON usual.offer_id = o.id
+LEFT JOIN alltime ON alltime.offer_id = o.id
 ORDER BY o.weight_grams
 `
 
@@ -251,12 +285,23 @@ type OffersForCoffeeRow struct {
 	SeenAt         pgtype.Timestamptz
 	Low30          int64
 	Usual          int64
+	TrackedSince   pgtype.Timestamptz
+	LowestTracked  int64
 }
 
-// Offers of one coffee in one market with their latest price, the lowest
-// price of the last 30 days, and the usual price: the highest price seen on
-// at least 7 different UTC days in the last 30 days (the rule both sister
-// sites use; a store's own "compare at" price is shown, never trusted).
+// Offers of one coffee in one market with everything the verdict needs.
+// The rules are the sister sites' (TR PriceSummaryRefresher, TakipDibi):
+//   - gap rule: if two readings in the last 30 days are more than 72 hours
+//     apart, the offer restarted at the reading after the latest such gap and
+//     only readings from there on count. A coffee that vanished and came back
+//     (a new lot, a changed bag) is never measured against its old price.
+//   - low30: the lowest price in that window.
+//   - usual: the highest price seen on at least 7 different UTC days in that
+//     window; 0 when there is none yet ("not enough history").
+//   - tracked_since / lowest_tracked: where tracking starts (the gap restart,
+//     else the first reading ever) and the lowest price since then.
+//
+// Prices are > 0 by CHECK, so 0 always means "none".
 func (q *Queries) OffersForCoffee(ctx context.Context, arg OffersForCoffeeParams) ([]OffersForCoffeeRow, error) {
 	rows, err := q.db.Query(ctx, offersForCoffee, arg.CoffeeID, arg.Market)
 	if err != nil {
@@ -278,6 +323,8 @@ func (q *Queries) OffersForCoffee(ctx context.Context, arg OffersForCoffeeParams
 			&i.SeenAt,
 			&i.Low30,
 			&i.Usual,
+			&i.TrackedSince,
+			&i.LowestTracked,
 		); err != nil {
 			return nil, err
 		}

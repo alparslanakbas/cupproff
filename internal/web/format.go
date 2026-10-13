@@ -27,15 +27,6 @@ func perKilo(priceMinor int64, grams int32, currency string) string {
 	return money(int64(math.Round(float64(priceMinor)*1000/float64(grams))), currency) + "/kg"
 }
 
-// dropPercent is how far the price sits below a reference, rounded down,
-// so a 9.6% drop is never shown as 10%.
-func dropPercent(price, reference int64) int {
-	if reference <= 0 || price >= reference {
-		return 0
-	}
-	return int((reference - price) * 100 / reference)
-}
-
 // cdnImage asks Shopify's image CDN for a resized copy. The CDN already
 // serves WebP/AVIF to browsers that accept it; with width=480 a product
 // image went from 118 KB to 15 KB (13 Oct 2026). Other hosts are returned

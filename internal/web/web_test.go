@@ -41,9 +41,6 @@ func TestMoneyAndPerKilo(t *testing.T) {
 	if got := perKilo(2000, 0, "USD"); got != "" {
 		t.Errorf("perKilo without a weight = %q, want empty (never assumed)", got)
 	}
-	if got := dropPercent(1810, 2000); got != 9 {
-		t.Errorf("dropPercent = %d, want 9 (9.5%% rounds down)", got)
-	}
 }
 
 func TestCDNImageResizesOnlyShopify(t *testing.T) {

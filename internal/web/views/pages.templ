@@ -90,9 +90,10 @@ type Offer struct {
 	Price     string
 	PerKilo   string
 	StoreWas  string
-	RealDrop  int
-	Usual     string
-	Low30     string
+	RealDrop    int
+	Usual       string
+	LowestIn30  bool   // the window's lowest price and below the usual price
+	LowestSince string // set when it is also the lowest since tracking began (30+ days)
 	Available bool
 	BuyURL    string
 	Chart     string // inline SVG from sparkline, "" when there is no history yet
@@ -134,6 +135,11 @@ templ CoffeePage(p Page, c Coffee) {
 									<span class="muted small">since { o.Since }</span>
 								</td>
 								<td>
+									if o.LowestSince != "" {
+										<span class="badge real">Lowest since { o.LowestSince }</span>
+									} else if o.LowestIn30 {
+										<span class="badge real">Lowest in 30 days</span>
+									}
 									if o.RealDrop > 0 {
 										<span class="badge real">{ fmt.Sprintf("Real drop −%d%%", o.RealDrop) }</span>
 										<span class="muted small">usual { o.Usual }</span>

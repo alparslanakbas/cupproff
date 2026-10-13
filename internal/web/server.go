@@ -21,6 +21,7 @@ import (
 
 	"github.com/alparslanakbas/cupproof/internal/db"
 	"github.com/alparslanakbas/cupproof/internal/market"
+	"github.com/alparslanakbas/cupproof/internal/pricing"
 	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
 
@@ -218,12 +219,15 @@ func (s *Server) coffee(w http.ResponseWriter, r *http.Request) {
 		if o.CompareAtMinor != nil {
 			ov.StoreWas = money(*o.CompareAtMinor, o.Currency)
 		}
+		sum := pricing.Summary{Latest: o.PriceMinor, Low30: o.Low30, Usual: o.Usual,
+			TrackedSince: o.TrackedSince.Time, LowestTracked: o.LowestTracked}
 		if o.Usual > 0 {
 			ov.Usual = money(o.Usual, o.Currency)
-			ov.RealDrop = dropPercent(o.PriceMinor, o.Usual)
 		}
-		if o.Low30 > 0 {
-			ov.Low30 = money(o.Low30, o.Currency)
+		ov.RealDrop = sum.DropPercent()
+		ov.LowestIn30 = sum.LowestIn30Days()
+		if since, ok := sum.LowestSince(now); ok {
+			ov.LowestSince = since.UTC().Format("Jan 2, 2006")
 		}
 		if pts := history[o.ID]; len(pts) > 0 {
 			ov.Since = pts[0].At.UTC().Format("Jan 2, 2006")
