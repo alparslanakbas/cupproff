@@ -72,14 +72,17 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Red Jasmine 2026", ProductType: "Tea", Variants: []Variant{{Title: "2 oz", Price: "14.00", Available: true}}},
 		{Title: "Finca Mercado Bag", ProductType: "Goods", Variants: []Variant{{Title: "12 oz", Price: "20.00", Available: true}}},
 		{Title: "IO-E-05", Tags: []string{"bigface", "white-label"}, Variants: []Variant{{Title: "8.8oz", Price: "4.58", Available: true}}},
+		{Title: "Fraction (Half-Caff - WS)", Tags: []string{"Blends", "wholesale", "wholesale-only"}, Variants: []Variant{{Title: "2lb", Price: "273.00", Available: true}}},
 		{Title: "Elefante Extended Fermentation", Variants: []Variant{
 			{Title: "12 oz", Price: "0.00", Available: true},
 			{Title: "2 lb", Price: "52.00", Available: true},
 		}},
+		// Heart's retail bags carry a bare "wholesale" tag; they stay.
+		{Title: "Ethiopia Halo", Tags: []string{"Single Origin", "wholesale"}, Variants: []Variant{{Title: "8oz", Price: "23.00", Available: true}}},
 	}
 	offers, _ := ToOffers(products)
-	if len(offers) != 1 || offers[0].WeightGrams != 907 || offers[0].PriceMinor != 5200 {
-		t.Fatalf("offers = %+v; want only the consumer 2 lb bag (the $0 size dropped)", offers)
+	if len(offers) != 2 || offers[0].WeightGrams != 907 || offers[0].PriceMinor != 5200 || offers[1].Title != "Ethiopia Halo" {
+		t.Fatalf("offers = %+v; want the consumer 2 lb bag (the $0 size dropped) and Heart's retail bag", offers)
 	}
 }
 

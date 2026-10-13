@@ -74,10 +74,12 @@ var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|ket
 var notCoffeeType = regexp.MustCompile(`(?i)\b(drinkware|gifts?|green|unroasted|merch(andise)?|apparel|equipment|` +
 	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?|teas?|goods|sundry|rtd|ready[ -]to[ -]drink)\b`)
 
-// White-label and wholesale products carry trade prices for another brand,
-// not a price a customer pays: Onyx publishes dozens tagged "white-label"
-// with code names ("IO-E-05", $4.58 for 8.8 oz; 13 Oct 2026).
-var notConsumerTag = regexp.MustCompile(`(?i)^(white[- ]?label|wholesale|private[- ]?label)$`)
+// White-label and wholesale-only products carry trade prices, not a price a
+// customer pays: Onyx publishes dozens tagged "white-label" with code names
+// ("IO-E-05", $4.58 for 8.8 oz), Madcap tags its trade bags "wholesale-only".
+// A bare "wholesale" tag is NOT a signal: Heart puts it on its retail single
+// origins (8 oz for $23) to mean "also sold wholesale" (13 Oct 2026).
+var notConsumerTag = regexp.MustCompile(`(?i)^(white[- ]?label|wholesale[- ]?only|private[- ]?label)$`)
 
 // Skipped explains why a product produced no offers, for the scrape report.
 type Skipped struct {
