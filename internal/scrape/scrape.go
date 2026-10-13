@@ -39,16 +39,49 @@ func (r *Runner) Run(ctx context.Context, markets []market.Market) (failed int, 
 	if err != nil {
 		return 0, err
 	}
+	var todo []db.ListActiveRoastersRow
 	for _, ro := range roasters {
-		if ro.Platform != "shopify" || (len(r.Only) > 0 && !slices.Contains(r.Only, ro.Slug)) {
-			continue
+		if ro.Platform == "shopify" && (len(r.Only) == 0 || slices.Contains(r.Only, ro.Slug)) {
+			todo = append(todo, ro)
 		}
-		if err := r.one(ctx, ro.Slug, ro.BaseUrl, markets); err != nil {
+	}
+	var refusals breaker
+	for i, ro := range todo {
+		err := r.one(ctx, ro.Slug, ro.BaseUrl, markets)
+		if err != nil {
 			failed++
 			r.Log.Error("roaster failed", "roaster", ro.Slug, "err", err)
 		}
+		if refusals.record(err) {
+			// Not an error return: the stores read so far must still reach
+			// the pages (the caller refreshes summaries), and the unread ones
+			// count as failed so the exit code shows the stop.
+			r.Log.Error("run stopped: stores keep refusing us; the IP is shared with the sister sites",
+				"in_a_row", refusals.inARow, "not_read", len(todo)-i-1)
+			return failed + len(todo) - i - 1, nil
+		}
 	}
 	return failed, nil
+}
+
+// stopAfter is how many stores may refuse us in a row (429, or a bot
+// challenge) before the run stops. The server's IP is shared with the
+// sister sites (WheyProof, ProteinAvcısı); pressing on against a store
+// platform that has started refusing would spend that IP's standing for
+// all of them.
+const stopAfter = 3
+
+// breaker counts refusals in a row; any other outcome resets it.
+type breaker struct{ inARow int }
+
+// record notes one store's result and reports whether the run must stop.
+func (b *breaker) record(err error) bool {
+	if errors.Is(err, shopify.ErrRateLimited) || errors.Is(err, shopify.ErrChallenged) {
+		b.inARow++
+	} else {
+		b.inARow = 0
+	}
+	return b.inARow >= stopAfter
 }
 
 // one reads a store: robots.txt first, then its /meta.json (where it ships,
@@ -118,6 +151,13 @@ func (r *Runner) robots(ctx context.Context, baseURL string) (robots.Rules, erro
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return robots.Rules{}, nil
+	}
+	// The same refusals as on the catalog, so the breaker counts them.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return robots.Rules{}, shopify.ErrRateLimited
+	}
+	if resp.StatusCode == http.StatusForbidden && resp.Header.Get("Cf-Mitigated") != "" {
+		return robots.Rules{}, shopify.ErrChallenged
 	}
 	if resp.StatusCode != http.StatusOK {
 		return robots.Rules{}, fmt.Errorf("HTTP %d", resp.StatusCode)
