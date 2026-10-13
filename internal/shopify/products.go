@@ -64,9 +64,23 @@ type Offer struct {
 // several coffees (a per-kg price says nothing about any one of them, and
 // La Colombe's "3oz Filter Packs" priced a case as one 3 oz pack), and
 // paper/travel cups ("hot cup", "cold cup"; a bare "cup" stays allowed).
+// Community Coffee lists creamer and sugar with no type or tag at all;
+// "sugar" alone can't be used ("Grandma's Sugar Cookie" is a coffee).
 var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|kettles?|grinders?|drippers?|scales?|candles?|` +
 	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
-	`wholesale|recurring|installments?|monthly|box(es)?|variety|packs?|(travel|hot|cold|paper) cups?)\b|\(ws\)`)
+	`wholesale|recurring|installments?|monthly|(gift|discovery|experience) box(es)?|packs?|(travel|hot|cold|paper) cups?|` +
+	`creamers?|granulated)\b|\(ws\)`)
+
+// Deliberately absent: "variety" (Counter Culture names lots by plant
+// variety, "Finca El Puente - Gesha Variety"; 13 real coffees were lost to
+// it on 13 Oct 2026, a "Variety Pack" is caught by "packs") and a bare
+// "box" (Onyx's "Colombia La Riviera Gesha Box" is one coffee).
+
+// A coffee size that states one unit of a multi-unit pack: Community
+// Coffee's "40 Count - 2.5 oz. Packet" ($84.57) and "12 oz. | 8-pack"
+// read as 2.5 oz and 12 oz, a per-kg price 8 to 40 times too high
+// (13 Oct 2026). Pods carry no comparable bean weight either.
+var coffeePortion = regexp.MustCompile(`(?i)\b(count|ct|\d+[- ]?packs?|pack of|packets?|pods?|k-?cups?)\b`)
 
 // The store's own product type is the stronger signal when it is set: on
 // 13 Oct 2026 "Drinkware" cups ("Latte Cup 12oz"), "Gifts" (honey 12oz) and
@@ -148,7 +162,7 @@ type filter struct {
 }
 
 var filters = map[Kind]filter{
-	Coffee: {title: notCoffee, productType: notCoffeeType},
+	Coffee: {title: notCoffee, productType: notCoffeeType, portion: coffeePortion},
 	Tea:    {title: notTea, productType: notTeaType, tag: notTeaTag, portion: teaPortion},
 }
 

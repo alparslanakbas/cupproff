@@ -119,6 +119,11 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Roasted Coffee - Recurring - 12 Installments", Variants: []Variant{{Title: "250 g", Price: "342.00", Available: true}}},
 		{Title: "Corsica - 3oz Filter Packs", ProductType: "Coffee", Variants: []Variant{{Title: "3 oz", Price: "288.00", Available: true}}},
 		{Title: "Chai Latte Powder", ProductType: "Barista Provisions", Variants: []Variant{{Title: "3 lb", Price: "64.80", Available: true}}},
+		{Title: "Around the World Gift Box", ProductType: "Coffee", Variants: []Variant{{Title: "12 oz", Price: "60.00", Available: true}}},
+		// Community Coffee: one unit's weight on a multi-unit pack, and creamer.
+		{Title: "Signature Blend Ground Coffee Packets 40 Count", ProductType: "Ground", Variants: []Variant{{Title: "40 Count - 2.5 oz. Packet", Price: "84.57", Available: true}}},
+		{Title: "Military Match Breakfast Blend Ground Coffee", ProductType: "Military Match", Variants: []Variant{{Title: "12 oz. | 8-pack", Price: "42.96", Available: true}}},
+		{Title: "Lactose Free Coffee Creamer", Variants: []Variant{{Title: "11 oz.", Price: "3.29", Available: true}}},
 		{Title: "Fraction (Half-Caff - WS)", Tags: []string{"Blends", "wholesale", "wholesale-only"}, Variants: []Variant{{Title: "2lb", Price: "273.00", Available: true}}},
 		{Title: "Elefante Extended Fermentation", Variants: []Variant{
 			{Title: "12 oz", Price: "0.00", Available: true},
@@ -153,6 +158,19 @@ func TestToOffersFoldsGrindIntoSizeAndKeepsCheapestAvailable(t *testing.T) {
 	}
 	if offers[1].WeightGrams != 2268 || offers[1].PriceMinor != 9800 {
 		t.Errorf("5 lb offer = %+v", offers[1])
+	}
+}
+
+// Real coffees whose names look like filtered words (13 Oct 2026): a plant
+// variety, a single coffee sold in a box, a flavour named after sugar.
+func TestToOffersKeepsCoffeesThatOnlySoundLikeLeaks(t *testing.T) {
+	titles := []string{"Finca El Puente - Gesha Variety", "Colombia La Riviera Gesha Box", "Grandma's Sugar Cookie Ground Coffee", "Cup of Excellence Colombia"}
+	var products []Product
+	for _, title := range titles {
+		products = append(products, Product{Title: title, ProductType: "Coffee", Variants: []Variant{{Title: "12 oz", Price: "20.00", Available: true}}})
+	}
+	if offers, skipped := ToOffers(products, Store{Kind: Coffee}); len(offers) != len(titles) {
+		t.Fatalf("kept %d of %d; skipped %v", len(offers), len(titles), skipped)
 	}
 }
 
