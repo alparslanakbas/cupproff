@@ -1,11 +1,11 @@
 -- name: ListActiveRoasters :many
-SELECT id, slug, name, base_url, platform
+SELECT id, slug, name, base_url, platform, kind
 FROM roasters
 WHERE active
 ORDER BY slug;
 
 -- name: RoasterBySlug :one
-SELECT id, slug, name, base_url, platform
+SELECT id, slug, name, base_url, platform, kind, variant_must_match
 FROM roasters
 WHERE slug = $1;
 
@@ -52,7 +52,7 @@ FROM (
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
     JOIN offer_summaries s ON s.offer_id = o.id
-    WHERE s.latest_available
+    WHERE s.latest_available AND r.kind = @kind
     ORDER BY c.id, o.weight_grams
 ) x
 ORDER BY x.title, x.slug
@@ -62,11 +62,13 @@ LIMIT @page_size OFFSET @skip;
 SELECT count(DISTINCT o.coffee_id)
 FROM offers o
 JOIN offer_summaries s ON s.offer_id = o.id
-WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available;
+JOIN coffees c ON c.id = o.coffee_id
+JOIN roasters r ON r.id = c.roaster_id
+WHERE o.market = @market AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = @kind;
 
 -- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,
-       r.name AS roaster_name, r.base_url AS roaster_url
+       r.name AS roaster_name, r.base_url AS roaster_url, r.kind
 FROM coffees c
 JOIN roasters r ON r.id = c.roaster_id
 WHERE c.slug = $1;
@@ -172,13 +174,14 @@ SET latest_price = EXCLUDED.latest_price,
 -- (design decision K10); its page stays, with noindex, for anyone who
 -- bookmarked it, and comes back if the roaster restocks it.
 -- name: SitemapCoffees :many
-SELECT c.slug, max(o.last_seen_at)::timestamptz AS last_seen
+SELECT c.slug, r.kind, max(o.last_seen_at)::timestamptz AS last_seen
 FROM coffees c
+JOIN roasters r ON r.id = c.roaster_id
 JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
 JOIN offer_summaries s ON s.offer_id = o.id
 WHERE s.last_available > now() - interval '30 days'
-GROUP BY c.slug
-ORDER BY c.slug;
+GROUP BY c.slug, r.kind
+ORDER BY r.kind, c.slug;
 
 -- Price history of a coffee's offers, oldest first, for the charts.
 -- name: PriceHistory :many

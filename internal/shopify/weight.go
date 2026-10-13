@@ -1,6 +1,7 @@
 package shopify
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strconv"
@@ -8,12 +9,13 @@ import (
 )
 
 // A bag size as the store writes it: "12 oz", "340g", "2 lb", "1 kg",
-// optionally with a pack count in front ("2 x 12 oz").
+// "1/4 Pound" (Rishi), optionally with a pack count in front ("2 x 12 oz").
+// Without the fraction form "1/4 Pound" read as "4 Pound", 16 times the bag.
 //
 // Fluid ounces are excluded on purpose: "32 fl oz" is a volume (cold brew
 // concentrate), and turning it into grams would invent data.
 var weightPattern = regexp.MustCompile(
-	`(?i)(?:(\d+)\s*[x×]\s*)?(\d+(?:[.,]\d+)?)\s*(fl\.?\s*oz|oz|ounces?|lbs?|pounds?|kg|kilos?|kilograms?|g|grams?|gr)\b`)
+	`(?i)(?:(\d+)\s*[x×]\s*)?(\d+\s*/\s*[1-9]\d*|\d+(?:[.,]\d+)?)\s*(fl\.?\s*oz|oz|ounces?|lbs?|pounds?|kg|kilos?|kilograms?|g|grams?|gr)\b`)
 
 var gramsPerUnit = map[string]float64{
 	"oz": 28.349523125, "ounce": 28.349523125, "ounces": 28.349523125,
@@ -31,7 +33,7 @@ func ParseWeight(s string) (grams int, label string) {
 		if strings.HasPrefix(unit, "fl") {
 			continue
 		}
-		amount, err := strconv.ParseFloat(strings.Replace(m[2], ",", ".", 1), 64)
+		amount, text, err := parseAmount(m[2])
 		if err != nil || amount <= 0 {
 			continue
 		}
@@ -45,13 +47,28 @@ func ParseWeight(s string) (grams int, label string) {
 		if g <= 0 {
 			continue
 		}
-		label = strconv.FormatFloat(amount, 'f', -1, 64) + " " + unitLabel[unit]
+		label = text + " " + unitLabel[unit]
 		if count > 1 {
 			label = m[1] + " x " + label
 		}
 		return g, label
 	}
 	return 0, ""
+}
+
+// parseAmount reads "12", "12.5", "12,5" or "1/4", and returns the number
+// with the way the label writes it ("1/4" stays a fraction).
+func parseAmount(s string) (float64, string, error) {
+	if num, den, ok := strings.Cut(s, "/"); ok {
+		n, err1 := strconv.Atoi(strings.TrimSpace(num))
+		d, err2 := strconv.Atoi(strings.TrimSpace(den))
+		if err1 != nil || err2 != nil || d == 0 {
+			return 0, "", fmt.Errorf("bad fraction %q", s)
+		}
+		return float64(n) / float64(d), fmt.Sprintf("%d/%d", n, d), nil
+	}
+	f, err := strconv.ParseFloat(strings.Replace(s, ",", ".", 1), 64)
+	return f, strconv.FormatFloat(f, 'f', -1, 64), err
 }
 
 // Labels are written one way whatever the store typed ("12oz" → "12 oz").

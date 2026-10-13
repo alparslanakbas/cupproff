@@ -33,7 +33,11 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(
 a { color: var(--accent); }
 h1 { font: 500 2rem/1.2 var(--font-display); margin: 0 0 .5rem; }
 .wrap { max-width: 1120px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
-.site-header { display: flex; align-items: baseline; gap: 1rem; max-width: 1120px; margin: 0 auto; padding: 1rem; }
+.site-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem 1rem; max-width: 1120px; margin: 0 auto; padding: 1rem; }
+.sections { display: flex; gap: .25rem; margin-left: auto; }
+.sections a { padding: .3rem .8rem; border: 1px solid transparent; border-radius: 999px; color: var(--text); text-decoration: none; }
+.sections a:hover { border-color: var(--border); }
+.sections a[aria-current="page"] { background: var(--surface); border-color: var(--border); color: var(--accent); font-weight: 600; }
 .brand { font: 500 1.4rem var(--font-display); color: var(--text); text-decoration: none; }
 .tagline, .muted { color: var(--muted); }
 .small { font-size: .85rem; }

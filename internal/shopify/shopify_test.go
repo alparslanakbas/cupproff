@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 
 	"github.com/alparslanakbas/cupproof/internal/market"
@@ -25,6 +26,9 @@ func TestParseWeight(t *testing.T) {
 		{"250 Grams", 250},
 		{"2 x 12 oz", 680},
 		{"0,5 kg", 500},
+		{"1/4 Pound", 113}, // Rishi; once read as "4 Pound"
+		{"113g (4 oz.)", 113},
+		{"1 Cake (357 Grams)", 357},
 		{"32 fl oz cold brew", 0}, // a volume, not a weight
 		{"Whole Bean", 0},
 		{"Hologram", 0},
@@ -38,8 +42,46 @@ func TestParseWeight(t *testing.T) {
 
 func ptr(s string) *string { return &s }
 
+// Tea houses' catalogs as read on 13 Oct 2026: teaware, candles, samplers and
+// wholesale tea are not offers; one-cup samples and boxes of bags are not
+// comparable sizes, while the same tea's loose sizes are.
+func TestToOffersReadsTeaHouses(t *testing.T) {
+	products := []Product{
+		{Title: "Shibo Teapot", ProductType: "Teaware", Variants: []Variant{{Title: "150g", Price: "120.00", Available: true}}},
+		{Title: "Atelier Candle", ProductType: "Candles", Variants: []Variant{{Title: "8oz", Price: "68.00", Available: true}}},
+		{Title: "Tea Sampler", Variants: []Variant{{Title: "Loose / 4 oz. Tin", Price: "30.00", Available: true}}},
+		{Title: "Assam Breakfast", ProductType: "Wholesale Tea", Variants: []Variant{{Title: "1 lb", Price: "40.00", Available: true}}},
+		{Title: "Dong Ding Oolong", ProductType: "Teas", Variants: []Variant{
+			{Title: "3g Sample (1 Serving)", Price: "2.00", Available: true},
+			{Title: "10 3g Teabags", Price: "12.00", Available: true},
+			{Title: "113g (4 oz.)", Price: "28.00", Available: true},
+		}},
+		{Title: "Jade Cloud", ProductType: "LOOSE LEAF", Variants: []Variant{
+			{Title: "Teaser", Option1: ptr("Teaser"), Price: "5.00", Available: true},
+			{Title: "1/4 Pound", Option1: ptr("1/4 Pound"), Price: "24.00", Available: true},
+		}},
+		{Title: "2019 Bulang Raw Pu-erh", ProductType: "Raw Pu-erh Tea", Variants: []Variant{
+			{Title: "25 Grams Sample", Price: "9.00", Available: true},
+			{Title: "1 Cake (357 Grams)", Price: "89.00", Available: true},
+		}},
+	}
+	offers, skipped := ToOffers(products, Store{Kind: Tea})
+	var got []string
+	for _, o := range offers {
+		got = append(got, fmt.Sprintf("%s %dg", o.Title, o.WeightGrams))
+	}
+	want := []string{"Dong Ding Oolong 113g", "Jade Cloud 113g", "2019 Bulang Raw Pu-erh 357g"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("offers = %v, want %v (skipped %v)", got, want, skipped)
+	}
+	// The same rules must not leak into coffee: a roaster's tea stays out.
+	if offers, _ := ToOffers(products[4:5], Store{Kind: Coffee}); len(offers) != 0 {
+		t.Errorf("a tea read as coffee: %+v", offers)
+	}
+}
+
 func TestParseWeightLabelsAreUniform(t *testing.T) {
-	cases := map[string]string{"12oz": "12 oz", "2lbs": "2 lb", "340 Grams": "340 g", "0,5 kg": "0.5 kg", "2 x 12 oz": "2 x 12 oz"}
+	cases := map[string]string{"12oz": "12 oz", "2lbs": "2 lb", "340 Grams": "340 g", "0,5 kg": "0.5 kg", "2 x 12 oz": "2 x 12 oz", "1/4 Pound": "1/4 lb"}
 	for in, want := range cases {
 		if _, got := ParseWeight(in); got != want {
 			t.Errorf("ParseWeight(%q) label = %q, want %q", in, got, want)
@@ -56,7 +98,7 @@ func TestToOffersSkipsNonCoffeeProductTypes(t *testing.T) {
 		{Title: "Unroasted Colombia Popayán Cauca", ProductType: "Green", Variants: []Variant{{Title: "5 lb", Price: "40.00"}}},
 		{Title: "Colombia El Vergel Tag Team", ProductType: "", Variants: []Variant{{Title: "12 oz", Price: "24.00", Available: true}}},
 	}
-	offers, skipped := ToOffers(products)
+	offers, skipped := ToOffers(products, Store{Kind: Coffee})
 	if len(offers) != 1 || offers[0].Title != "Colombia El Vergel Tag Team" || len(skipped) != 3 {
 		t.Fatalf("offers=%+v skipped=%+v; want only the coffee without a product type", offers, skipped)
 	}
@@ -72,6 +114,11 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Red Jasmine 2026", ProductType: "Tea", Variants: []Variant{{Title: "2 oz", Price: "14.00", Available: true}}},
 		{Title: "Finca Mercado Bag", ProductType: "Goods", Variants: []Variant{{Title: "12 oz", Price: "20.00", Available: true}}},
 		{Title: "IO-E-05", Tags: []string{"bigface", "white-label"}, Variants: []Variant{{Title: "8.8oz", Price: "4.58", Available: true}}},
+		// Seen in the coffee listing after the tea round.
+		{Title: "12oz Bionics Hot Cup", ProductType: "Warehouse", Variants: []Variant{{Title: "12 oz", Price: "100.00", Available: true}}},
+		{Title: "Roasted Coffee - Recurring - 12 Installments", Variants: []Variant{{Title: "250 g", Price: "342.00", Available: true}}},
+		{Title: "Corsica - 3oz Filter Packs", ProductType: "Coffee", Variants: []Variant{{Title: "3 oz", Price: "288.00", Available: true}}},
+		{Title: "Chai Latte Powder", ProductType: "Barista Provisions", Variants: []Variant{{Title: "3 lb", Price: "64.80", Available: true}}},
 		{Title: "Fraction (Half-Caff - WS)", Tags: []string{"Blends", "wholesale", "wholesale-only"}, Variants: []Variant{{Title: "2lb", Price: "273.00", Available: true}}},
 		{Title: "Elefante Extended Fermentation", Variants: []Variant{
 			{Title: "12 oz", Price: "0.00", Available: true},
@@ -80,7 +127,7 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		// Heart's retail bags carry a bare "wholesale" tag; they stay.
 		{Title: "Ethiopia Halo", Tags: []string{"Single Origin", "wholesale"}, Variants: []Variant{{Title: "8oz", Price: "23.00", Available: true}}},
 	}
-	offers, _ := ToOffers(products)
+	offers, _ := ToOffers(products, Store{Kind: Coffee})
 	if len(offers) != 2 || offers[0].WeightGrams != 907 || offers[0].PriceMinor != 5200 || offers[1].Title != "Ethiopia Halo" {
 		t.Fatalf("offers = %+v; want the consumer 2 lb bag (the $0 size dropped) and Heart's retail bag", offers)
 	}
@@ -96,7 +143,7 @@ func TestToOffersFoldsGrindIntoSizeAndKeepsCheapestAvailable(t *testing.T) {
 			{ID: 13, Option1: ptr("5 lb"), Option2: ptr("Whole Bean"), Price: "98.00", Available: true},
 		},
 	}
-	offers, skipped := ToOffers([]Product{p})
+	offers, skipped := ToOffers([]Product{p}, Store{Kind: Coffee})
 	if len(skipped) != 0 || len(offers) != 2 {
 		t.Fatalf("offers=%d skipped=%v, want 2 offers", len(offers), skipped)
 	}
@@ -115,7 +162,7 @@ func TestToOffersSkipsNonCoffeeAndMissingSizeWithoutGuessing(t *testing.T) {
 		{Title: "Cup of Excellence Colombia 8 oz", Handle: "coe", Variants: []Variant{{Title: "Default Title", Price: "30.00", Available: true}}},
 		{Title: "House Blend", Handle: "house", Variants: []Variant{{Title: "Default Title", Price: "16.00", Available: true}}},
 	}
-	offers, skipped := ToOffers(products)
+	offers, skipped := ToOffers(products, Store{Kind: Coffee})
 	if len(offers) != 1 || offers[0].Handle != "coe" || offers[0].WeightGrams != 227 {
 		t.Fatalf("offers = %+v; want only the Cup of Excellence lot (size from its title)", offers)
 	}
@@ -214,5 +261,41 @@ func TestFetchProductsErrors(t *testing.T) {
 			t.Errorf("HTTP %d: err = %v, want %v", c.status, err, c.want)
 		}
 		srv.Close()
+	}
+}
+
+// Harney's catalog as read on 13 Oct 2026: only "Loose" sizes are tea; the
+// canned drinks and jerky beside them state a weight too.
+func TestToOffersVariantRuleKeepsOnlyMatchingSizes(t *testing.T) {
+	products := []Product{
+		{Title: "Gyokuro", Variants: []Variant{
+			{Title: "Loose / 4 oz. Tin", Price: "55.00", Available: true},
+			{Title: "Sachets / Tin of 20 Sachets", Price: "14.00", Available: true},
+		}},
+		{Title: "Harney & Sons Coconut Water with Cinnamon", Variants: []Variant{{Title: "10.8 oz. Can / Case of 12 Cans", Price: "29.00", Available: true}}},
+		{Title: "Iowa Smokehouse Jerky (Assorted Flavors)", Variants: []Variant{{Title: "Homestyle Original / 10 oz. Bag", Price: "22.00", Available: true}}},
+		{Title: "Phoenix Honey Orchid", Variants: []Variant{{Title: "Loose / 2 oz. Tin", Price: "30.00", Available: true}}},
+		{Title: "Lift Ground Coffee", Tags: []string{"pantry"}, Variants: []Variant{{Title: "Loose / 12 oz. Bag", Price: "18.00", Available: true}}},
+	}
+	offers, skipped := ToOffers(products, Store{Kind: Tea, VariantMustMatch: regexp.MustCompile(`(?i)\bloose\b`)})
+	var got []string
+	for _, o := range offers {
+		got = append(got, fmt.Sprintf("%s %dg", o.Title, o.WeightGrams))
+	}
+	if want := "[Gyokuro 113g Phoenix Honey Orchid 57g]"; fmt.Sprint(got) != want {
+		t.Fatalf("offers = %v, want %s (skipped %v)", got, want, skipped)
+	}
+}
+
+// A catalog still going at MaxPages is returned, flagged, not dropped and
+// not passed off as complete.
+func TestFetchProductsFlagsTheCap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"products":[{"id":1,"title":"Gyokuro","handle":"gyokuro"}]}`)
+	}))
+	defer srv.Close()
+	products, err := newTestClient(srv, 2).FetchProducts(context.Background(), srv.URL, market.US)
+	if !errors.Is(err, ErrPageCap) || len(products) != 2 {
+		t.Fatalf("products=%d err=%v; want both pages and ErrPageCap", len(products), err)
 	}
 }

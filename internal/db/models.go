@@ -55,15 +55,17 @@ type PricePoint struct {
 }
 
 type Roaster struct {
-	ID            int64
-	Slug          string
-	Name          string
-	BaseUrl       string
-	Platform      string
-	Active        bool
-	CreatedAt     pgtype.Timestamptz
-	Country       *string
-	Currency      *string
-	ShipsTo       []string
-	MetaCheckedAt pgtype.Timestamptz
+	ID               int64
+	Slug             string
+	Name             string
+	BaseUrl          string
+	Platform         string
+	Active           bool
+	CreatedAt        pgtype.Timestamptz
+	Country          *string
+	Currency         *string
+	ShipsTo          []string
+	MetaCheckedAt    pgtype.Timestamptz
+	Kind             string
+	VariantMustMatch *string
 }

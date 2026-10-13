@@ -13,7 +13,7 @@ import (
 
 const coffeeBySlug = `-- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,
-       r.name AS roaster_name, r.base_url AS roaster_url
+       r.name AS roaster_name, r.base_url AS roaster_url, r.kind
 FROM coffees c
 JOIN roasters r ON r.id = c.roaster_id
 WHERE c.slug = $1
@@ -28,6 +28,7 @@ type CoffeeBySlugRow struct {
 	Handle      string
 	RoasterName string
 	RoasterUrl  string
+	Kind        string
 }
 
 func (q *Queries) CoffeeBySlug(ctx context.Context, slug string) (CoffeeBySlugRow, error) {
@@ -42,6 +43,7 @@ func (q *Queries) CoffeeBySlug(ctx context.Context, slug string) (CoffeeBySlugRo
 		&i.Handle,
 		&i.RoasterName,
 		&i.RoasterUrl,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -50,11 +52,18 @@ const countCoffees = `-- name: CountCoffees :one
 SELECT count(DISTINCT o.coffee_id)
 FROM offers o
 JOIN offer_summaries s ON s.offer_id = o.id
-WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available
+JOIN coffees c ON c.id = o.coffee_id
+JOIN roasters r ON r.id = c.roaster_id
+WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = $2
 `
 
-func (q *Queries) CountCoffees(ctx context.Context, market string) (int64, error) {
-	row := q.db.QueryRow(ctx, countCoffees, market)
+type CountCoffeesParams struct {
+	Market string
+	Kind   string
+}
+
+func (q *Queries) CountCoffees(ctx context.Context, arg CountCoffeesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoffees, arg.Market, arg.Kind)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -86,7 +95,7 @@ func (q *Queries) InsertPricePoint(ctx context.Context, arg InsertPricePointPara
 }
 
 const listActiveRoasters = `-- name: ListActiveRoasters :many
-SELECT id, slug, name, base_url, platform
+SELECT id, slug, name, base_url, platform, kind
 FROM roasters
 WHERE active
 ORDER BY slug
@@ -98,6 +107,7 @@ type ListActiveRoastersRow struct {
 	Name     string
 	BaseUrl  string
 	Platform string
+	Kind     string
 }
 
 func (q *Queries) ListActiveRoasters(ctx context.Context) ([]ListActiveRoastersRow, error) {
@@ -115,6 +125,7 @@ func (q *Queries) ListActiveRoasters(ctx context.Context) ([]ListActiveRoastersR
 			&i.Name,
 			&i.BaseUrl,
 			&i.Platform,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -139,15 +150,16 @@ FROM (
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
     JOIN offer_summaries s ON s.offer_id = o.id
-    WHERE s.latest_available
+    WHERE s.latest_available AND r.kind = $2
     ORDER BY c.id, o.weight_grams
 ) x
 ORDER BY x.title, x.slug
-LIMIT $3 OFFSET $2
+LIMIT $4 OFFSET $3
 `
 
 type ListCoffeesParams struct {
 	Market   string
+	Kind     string
 	Skip     int32
 	PageSize int32
 }
@@ -174,7 +186,12 @@ type ListCoffeesRow struct {
 // sold-out coffees is useless to a buyer. Offers not seen for 48 hours are
 // stale and never shown. Verdict figures come from offer_summaries.
 func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]ListCoffeesRow, error) {
-	rows, err := q.db.Query(ctx, listCoffees, arg.Market, arg.Skip, arg.PageSize)
+	rows, err := q.db.Query(ctx, listCoffees,
+		arg.Market,
+		arg.Kind,
+		arg.Skip,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -407,17 +424,19 @@ func (q *Queries) RefreshOfferSummaries(ctx context.Context) (int64, error) {
 }
 
 const roasterBySlug = `-- name: RoasterBySlug :one
-SELECT id, slug, name, base_url, platform
+SELECT id, slug, name, base_url, platform, kind, variant_must_match
 FROM roasters
 WHERE slug = $1
 `
 
 type RoasterBySlugRow struct {
-	ID       int64
-	Slug     string
-	Name     string
-	BaseUrl  string
-	Platform string
+	ID               int64
+	Slug             string
+	Name             string
+	BaseUrl          string
+	Platform         string
+	Kind             string
+	VariantMustMatch *string
 }
 
 func (q *Queries) RoasterBySlug(ctx context.Context, slug string) (RoasterBySlugRow, error) {
@@ -429,6 +448,8 @@ func (q *Queries) RoasterBySlug(ctx context.Context, slug string) (RoasterBySlug
 		&i.Name,
 		&i.BaseUrl,
 		&i.Platform,
+		&i.Kind,
+		&i.VariantMustMatch,
 	)
 	return i, err
 }
@@ -471,17 +492,19 @@ func (q *Queries) RoasterFreshness(ctx context.Context) ([]RoasterFreshnessRow, 
 }
 
 const sitemapCoffees = `-- name: SitemapCoffees :many
-SELECT c.slug, max(o.last_seen_at)::timestamptz AS last_seen
+SELECT c.slug, r.kind, max(o.last_seen_at)::timestamptz AS last_seen
 FROM coffees c
+JOIN roasters r ON r.id = c.roaster_id
 JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
 JOIN offer_summaries s ON s.offer_id = o.id
 WHERE s.last_available > now() - interval '30 days'
-GROUP BY c.slug
-ORDER BY c.slug
+GROUP BY c.slug, r.kind
+ORDER BY r.kind, c.slug
 `
 
 type SitemapCoffeesRow struct {
 	Slug     string
+	Kind     string
 	LastSeen pgtype.Timestamptz
 }
 
@@ -497,7 +520,7 @@ func (q *Queries) SitemapCoffees(ctx context.Context, market string) ([]SitemapC
 	var items []SitemapCoffeesRow
 	for rows.Next() {
 		var i SitemapCoffeesRow
-		if err := rows.Scan(&i.Slug, &i.LastSeen); err != nil {
+		if err := rows.Scan(&i.Slug, &i.Kind, &i.LastSeen); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

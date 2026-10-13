@@ -9,6 +9,14 @@ type Page struct {
 	Alternates  []Alternate
 	JSONLD      string // already marshalled with HTML escaping
 	NoIndex     bool
+	Nav         []NavLink // the market's sections; empty outside a market
+}
+
+// NavLink is one section of a market (Coffee, Tea) in the header.
+type NavLink struct {
+	Name    string
+	URL     string
+	Current bool
 }
 
 // StylesheetURL carries a content hash (set by the web package at start-up),
@@ -51,13 +59,24 @@ templ Layout(p Page) {
 		<body>
 			<header class="site-header">
 				<a class="brand" href="/">CupProof</a>
-				<span class="tagline">Coffee prices, with receipts</span>
+				<span class="tagline">Coffee and tea prices, with receipts</span>
+				if len(p.Nav) > 0 {
+					<nav class="sections" aria-label="Sections">
+						for _, n := range p.Nav {
+							if n.Current {
+								<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+							} else {
+								<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+							}
+						}
+					</nav>
+				}
 			</header>
 			<main class="wrap">
 				{ children... }
 			</main>
 			<footer class="site-footer">
-				<p>Prices are the ones each roaster shows to your country, read daily. A "real drop" is measured against the price seen on at least 7 days of the last 30, not against the store's own "was" price.</p>
+				<p>Prices are the ones each store shows to your country, read daily. A "real drop" is measured against the price seen on at least 7 days of the last 30, not against the store's own "was" price.</p>
 			</footer>
 		</body>
 	</html>

@@ -1,6 +1,9 @@
 package web
 
 import (
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +43,30 @@ func TestMoneyAndPerKilo(t *testing.T) {
 	}
 	if got := perKilo(2000, 0, "USD"); got != "" {
 		t.Errorf("perKilo without a weight = %q, want empty (never assumed)", got)
+	}
+	if got := perHundredGrams(2800, 113, "USD"); got != "$24.78/100 g" {
+		t.Errorf("perHundredGrams = %q", got)
+	}
+	if got := perHundredGrams(2800, 0, "USD"); got != "" {
+		t.Errorf("perHundredGrams without a weight = %q, want empty", got)
+	}
+}
+
+// The tea section's routes must coexist with /static/{file}: ServeMux
+// panics at start-up on overlapping patterns, so building the handler is
+// itself the test. Section slashes are added with a permanent redirect.
+func TestSectionRoutes(t *testing.T) {
+	h := (&Server{SiteURL: "http://x", Log: slog.New(slog.DiscardHandler)}).Handler()
+	cases := map[string]int{"/en-us/tea": http.StatusMovedPermanently, "/en-us/teas": http.StatusNotFound, "/xx-yy/tea": http.StatusNotFound}
+	for path, want := range cases {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != want {
+			t.Errorf("%s = %d, want %d", path, rec.Code, want)
+		}
+		if want == http.StatusMovedPermanently && rec.Header().Get("Location") != "/en-us/tea/" {
+			t.Errorf("%s moved to %q", path, rec.Header().Get("Location"))
+		}
 	}
 }
 

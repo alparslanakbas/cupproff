@@ -27,6 +27,14 @@ func perKilo(priceMinor int64, grams int32, currency string) string {
 	return money(int64(math.Round(float64(priceMinor)*1000/float64(grams))), currency) + "/kg"
 }
 
+// perHundredGrams is the price of 100 g, the unit tea is compared in.
+func perHundredGrams(priceMinor int64, grams int32, currency string) string {
+	if grams <= 0 {
+		return ""
+	}
+	return money(int64(math.Round(float64(priceMinor)*100/float64(grams))), currency) + "/100 g"
+}
+
 // cdnImage asks Shopify's image CDN for a resized copy. The CDN already
 // serves WebP/AVIF to browsers that accept it; with width=480 a product
 // image went from 118 KB to 15 KB (13 Oct 2026). Other hosts are returned

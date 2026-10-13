@@ -20,7 +20,7 @@ templ Home(p Page, markets []MarketLink) {
 	}
 }
 
-// Card is one coffee in a market listing.
+// Card is one coffee or tea in a market listing.
 type Card struct {
 	URL       string
 	Title     string
@@ -28,7 +28,7 @@ type Card struct {
 	ImageURL  string
 	Size      string
 	Price     string
-	PerKilo   string
+	PerUnit   string // per kg for coffee, per 100 g for tea
 	StoreWas  string
 	Available bool
 	RealDrop    int
@@ -44,10 +44,10 @@ type Pager struct {
 	NextURL     string
 }
 
-templ MarketHome(p Page, heading string, cards []Card, pg Pager) {
+templ MarketHome(p Page, heading, lede string, cards []Card, pg Pager) {
 	@Layout(p) {
 		<h1>{ heading }</h1>
-		<p class="lede">{ fmt.Sprintf("%d coffees from independent roasters, with the price each one shows today.", pg.Total) }</p>
+		<p class="lede">{ lede }</p>
 		<ul class="cards">
 			for _, c := range cards {
 				<li class="card">
@@ -60,8 +60,8 @@ templ MarketHome(p Page, heading string, cards []Card, pg Pager) {
 					<span class="muted">{ c.Roaster } · { c.Size }</span>
 					<span class="price-row">
 						<span class="price">{ c.Price }</span>
-						if c.PerKilo != "" {
-							<span class="muted">{ c.PerKilo }</span>
+						if c.PerUnit != "" {
+							<span class="muted">{ c.PerUnit }</span>
 						}
 					</span>
 					if c.LowestSince != "" {
@@ -95,11 +95,11 @@ templ MarketHome(p Page, heading string, cards []Card, pg Pager) {
 	}
 }
 
-// Offer is one bag size on a coffee page.
+// Offer is one size on a coffee or tea page.
 type Offer struct {
 	Size      string
 	Price     string
-	PerKilo   string
+	PerUnit   string
 	StoreWas  string
 	RealDrop    int
 	Usual       string
@@ -111,7 +111,7 @@ type Offer struct {
 	Since     string // date of the first reading
 }
 
-// Coffee is a coffee page.
+// Coffee is a coffee or tea page; the labels are the words that differ.
 type Coffee struct {
 	Title      string
 	Roaster    string
@@ -119,26 +119,36 @@ type Coffee struct {
 	ImageURL   string
 	BackURL    string
 	Offers     []Offer
+	Labels     Labels
+}
+
+// Labels are the words a coffee page and a tea page say differently.
+type Labels struct {
+	Back  string // "All coffees"
+	Maker string // "Roasted by"
+	Size  string // offers table: "Bag"
+	Unit  string // offers table: "Per kg"
+	Buy   string // "Go to roaster"
 }
 
 templ CoffeePage(p Page, c Coffee) {
 	@Layout(p) {
-		<nav class="crumbs"><a href={ templ.SafeURL(c.BackURL) }>All coffees</a> / { c.Roaster }</nav>
+		<nav class="crumbs"><a href={ templ.SafeURL(c.BackURL) }>{ c.Labels.Back }</a> / { c.Roaster }</nav>
 		<article class="coffee">
 			if c.ImageURL != "" {
 				<img class="coffee-img" src={ c.ImageURL } alt={ c.Title } width="480" height="480"/>
 			}
 			<div>
 				<h1>{ c.Title }</h1>
-				<p class="muted">Roasted by <a href={ templ.SafeURL(c.RoasterURL) } rel="nofollow">{ c.Roaster }</a></p>
+				<p class="muted">{ c.Labels.Maker } <a href={ templ.SafeURL(c.RoasterURL) } rel="nofollow">{ c.Roaster }</a></p>
 				<table class="offers">
-					<thead><tr><th>Bag</th><th>Price</th><th>Per kg</th><th>History</th><th>Verdict</th><th></th></tr></thead>
+					<thead><tr><th>{ c.Labels.Size }</th><th>Price</th><th>{ c.Labels.Unit }</th><th>History</th><th>Verdict</th><th></th></tr></thead>
 					<tbody>
 						for _, o := range c.Offers {
 							<tr>
 								<td>{ o.Size }</td>
 								<td class="price">{ o.Price }</td>
-								<td class="muted">{ o.PerKilo }</td>
+								<td class="muted">{ o.PerUnit }</td>
 								<td class="history">
 									if o.Chart != "" {
 										@templ.Raw(o.Chart)
@@ -166,7 +176,7 @@ templ CoffeePage(p Page, c Coffee) {
 										<span class="badge out">Out of stock</span>
 									}
 								</td>
-								<td><a class="buy" href={ templ.SafeURL(o.BuyURL) } rel="nofollow">Go to roaster</a></td>
+								<td><a class="buy" href={ templ.SafeURL(o.BuyURL) } rel="nofollow">{ c.Labels.Buy }</a></td>
 							</tr>
 						}
 					</tbody>
@@ -179,7 +189,7 @@ templ CoffeePage(p Page, c Coffee) {
 templ NotFound(p Page, homeURL string) {
 	@Layout(p) {
 		<h1>Page not found</h1>
-		<p class="lede">This coffee or page doesn't exist, or the roaster stopped selling it.</p>
-		<p><a href={ templ.SafeURL(homeURL) }>See all coffees</a></p>
+		<p class="lede">This page doesn't exist, or the store stopped selling it.</p>
+		<p><a href={ templ.SafeURL(homeURL) }>Go to the home page</a></p>
 	}
 }

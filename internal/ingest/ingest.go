@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -40,15 +41,23 @@ func (s *Service) Shopify(ctx context.Context, roasterSlug string, m market.Mark
 	if len(products) == 0 {
 		return Report{}, ErrEmptyCatalog
 	}
-	offers, skipped := shopify.ToOffers(products)
+	roaster, err := db.New(s.Pool).RoasterBySlug(ctx, roasterSlug)
+	if err != nil {
+		return Report{}, fmt.Errorf("roaster %q: %w", roasterSlug, err)
+	}
+	store := shopify.Store{Kind: shopify.Kind(roaster.Kind)}
+	if roaster.VariantMustMatch != nil {
+		// A broken rule fails the store rather than reading it unfiltered.
+		if store.VariantMustMatch, err = regexp.Compile(*roaster.VariantMustMatch); err != nil {
+			return Report{}, fmt.Errorf("roaster %q variant rule: %w", roasterSlug, err)
+		}
+	}
+	offers, skipped := shopify.ToOffers(products, store)
 	rep := Report{Products: len(products), Offers: len(offers), Skipped: skipped}
 
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := db.New(tx)
-		roaster, err := q.RoasterBySlug(ctx, roasterSlug)
-		if err != nil {
-			return fmt.Errorf("roaster %q: %w", roasterSlug, err)
-		}
+		var err error
 		at := seenAt.UTC().Truncate(time.Second)
 		coffeeIDs := map[string]int64{}
 		for _, o := range offers {

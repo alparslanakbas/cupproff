@@ -4,6 +4,7 @@ package scrape
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -78,7 +79,9 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 	}
 	for _, m := range read {
 		products, err := r.Client.FetchProducts(ctx, baseURL, m)
-		if err != nil {
+		if errors.Is(err, shopify.ErrPageCap) {
+			r.Log.Warn("catalog cut at the page cap; raise MaxPages", "roaster", slug, "market", m.Code, "products", len(products))
+		} else if err != nil {
 			return fmt.Errorf("%s: %w", m.Code, err)
 		}
 		rep, err := r.Ingest.Shopify(ctx, slug, m, products, time.Now())

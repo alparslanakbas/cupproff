@@ -1,4 +1,4 @@
-// Package shopify reads coffee offers from Shopify storefronts.
+// Package shopify reads coffee and tea offers from Shopify storefronts.
 package shopify
 
 import (
@@ -59,9 +59,14 @@ type Offer struct {
 // "Filter Roast" coffees are among the coffees we most want to keep.
 // Wholesale listings ("… (WS)", Madcap) are trade prices, not what a
 // customer pays, so they are left out too.
+// Added after the tea round (13 Oct 2026, seen in the coffee listing): SEY's
+// "Monthly"/"Recurring - 12 Installments" subscriptions, boxes and packs of
+// several coffees (a per-kg price says nothing about any one of them, and
+// La Colombe's "3oz Filter Packs" priced a case as one 3 oz pack), and
+// paper/travel cups ("hot cup", "cold cup"; a bare "cup" stays allowed).
 var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|kettles?|grinders?|drippers?|scales?|candles?|` +
 	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
-	`wholesale)\b|\(ws\)`)
+	`wholesale|recurring|installments?|monthly|box(es)?|variety|packs?|(travel|hot|cold|paper) cups?)\b|\(ws\)`)
 
 // The store's own product type is the stronger signal when it is set: on
 // 13 Oct 2026 "Drinkware" cups ("Latte Cup 12oz"), "Gifts" (honey 12oz) and
@@ -71,8 +76,12 @@ var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|ket
 // stores' own catalogs): tea (Passenger sells tea), "Goods", "Sundry Retail",
 // "RTD" (ready-to-drink cans); brew equipment is caught by "equipment". "retail" and
 // "brew" are left out on purpose: "Retail Coffee" and "Cold Brew" blends are coffee.
+// After the tea round: Onyx "Warehouse" (38 glasses, cups, containers),
+// "Barista Provisions" (latte powders), "Box Set"; Madcap "Supplies" (cups)
+// and "Alt Beverage" (cascara); George Howell "Cleaning"; Peace "Bundle".
 var notCoffeeType = regexp.MustCompile(`(?i)\b(drinkware|gifts?|green|unroasted|merch(andise)?|apparel|equipment|` +
-	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?|teas?|goods|sundry|rtd|ready[ -]to[ -]drink)\b`)
+	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?|teas?|goods|sundry|rtd|ready[ -]to[ -]drink|` +
+	`warehouse|supplies|provisions|box ?sets?|bundles?|cleaning|alt beverage)\b`)
 
 // White-label and wholesale-only products carry trade prices, not a price a
 // customer pays: Onyx publishes dozens tagged "white-label" with code names
@@ -81,31 +90,108 @@ var notCoffeeType = regexp.MustCompile(`(?i)\b(drinkware|gifts?|green|unroasted|
 // origins (8 oz for $23) to mean "also sold wholesale" (13 Oct 2026).
 var notConsumerTag = regexp.MustCompile(`(?i)^(white[- ]?label|wholesale[- ]?only|private[- ]?label)$`)
 
+// Kind is what a store sells. Every product of a store is read as the
+// store's kind: a roaster's few teas are skipped (notCoffeeType), and a tea
+// house's coffee, if any, would be too.
+type Kind string
+
+const (
+	Coffee Kind = "coffee"
+	Tea    Kind = "tea"
+)
+
+// Tea houses sell far more than tea: on 13 Oct 2026 Song Tea listed 211
+// teaware items among its first 250 products, Bellocq candles, incense and
+// "Bath & Body", Yunnan Sourcing pottery, In Pursuit of Tea a "Wholesale Tea"
+// type. Variety packs and samplers mix teas, so a per-100 g price says
+// nothing about any one of them. Harney leaves most product types empty
+// (202 of 250), so the title check carries more weight here.
+var notTeaType = regexp.MustCompile(`(?i)\b(tea ?wares?|wares|utensils|pottery|ceramics|porcelain|teapots?|cups?|bowls?|mugs?|` +
+	`table|home|candles?|incense|bath|body|accessor(y|ies)|gifts?|gift ?sets?|gift ?cards?|bundles?|variety packs?|assorted|` +
+	`merch(andise)?|apparel|subscriptions?|membership|club|events?|snacks|sparkling|concentrates?|water|wholesale|equipment)\b`)
+
+var notTea = regexp.MustCompile(`(?i)\b(teapots?|kettles?|infusers?|strainers?|mugs?|cups?|bowls?|whisks?|scoops?|` +
+	`candles?|incense|t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|sets?|kits?|samplers?|variety|assortment|` +
+	`flights?|subscriptions?|membership|chocolates?|cookies?|shortbread|biscuits?|wholesale)\b`)
+
+// "honey" is deliberately absent: "Phoenix Honey Orchid" is an oolong.
+
+// A tea size that is not comparable per 100 g: a one-cup sample ("3g Sample
+// (1 Serving)", "Single brew | 5g", Rishi's "Teaser") or a box of bags whose
+// text gives one bag's weight ("10 3g Teabags" would read as 3 g). These
+// variants are skipped; the loose sizes of the same tea stay.
+var teaPortion = regexp.MustCompile(`(?i)\b(samples?|single brew|servings?|teaser|trial|teabags?|tea bags?|sachets?|pyramids?|ct|count|enveloped)\b`)
+
+// Store is what ToOffers needs to know about the store a catalog came from.
+type Store struct {
+	Kind Kind
+	// VariantMustMatch, when set, keeps only variants whose text matches it.
+	// It is for a store whose catalog mixes its kind with goods no title or
+	// type tells apart: Harney leaves 202 of 250 product types empty and sells
+	// coconut water, jerky and coffee next to its teas, but every tea size is
+	// written "Loose / 2 oz. Tin" (84 of 84 on 13 Oct 2026, none of the 38
+	// other weighted products).
+	VariantMustMatch *regexp.Regexp
+}
+
+// Harney sells ground coffee and rock sugar as "Loose / 12 oz. Bag", so the
+// Loose rule alone lets them in; its own "pantry", "Bottles" and "treats"
+// tags mark them (13 Oct 2026). "Speyside Whisky" is a tea, tagged
+// "All Loose Tea", so the title is no help there either.
+var notTeaTag = regexp.MustCompile(`(?i)^(pantry|bottles|treats)$`)
+
+// filter picks a store's products of its kind.
+type filter struct {
+	title, productType *regexp.Regexp
+	tag                *regexp.Regexp // nil when the kind has no tag rule
+	portion            *regexp.Regexp // sizes that are not comparable; nil when none
+}
+
+var filters = map[Kind]filter{
+	Coffee: {title: notCoffee, productType: notCoffeeType},
+	Tea:    {title: notTea, productType: notTeaType, tag: notTeaTag, portion: teaPortion},
+}
+
+func hasTag(p Product, re *regexp.Regexp) bool {
+	return re != nil && slices.ContainsFunc(p.Tags, func(tag string) bool { return re.MatchString(strings.TrimSpace(tag)) })
+}
+
 // Skipped explains why a product produced no offers, for the scrape report.
 type Skipped struct {
 	Handle string
 	Reason string
 }
 
-// ToOffers turns storefront products into coffee offers. Products that
-// aren't coffee, or that state no bag size, are skipped with a reason:
-// a missing weight is never guessed.
-func ToOffers(products []Product) ([]Offer, []Skipped) {
+// ToOffers turns a store's products into offers of its kind. Products of
+// another kind, or that state no size, are skipped with a reason: a missing
+// weight is never guessed.
+func ToOffers(products []Product, store Store) ([]Offer, []Skipped) {
+	kind := store.Kind
+	f, ok := filters[kind]
+	if !ok {
+		return nil, []Skipped{{"", fmt.Sprintf("unknown store kind %q", kind)}}
+	}
 	var offers []Offer
 	var skipped []Skipped
 	for _, p := range products {
-		if notCoffee.MatchString(p.Title) || notCoffeeType.MatchString(p.ProductType) {
-			skipped = append(skipped, Skipped{p.Handle, "not coffee: " + p.Title})
+		if f.title.MatchString(p.Title) || f.productType.MatchString(p.ProductType) || hasTag(p, f.tag) {
+			skipped = append(skipped, Skipped{p.Handle, "not " + string(kind) + ": " + p.Title})
 			continue
 		}
-		if slices.ContainsFunc(p.Tags, func(tag string) bool { return notConsumerTag.MatchString(strings.TrimSpace(tag)) }) {
+		if hasTag(p, notConsumerTag) {
 			skipped = append(skipped, Skipped{p.Handle, "not a consumer listing: " + p.Title})
 			continue
 		}
 		bySize := map[int]Offer{}
 		for _, v := range p.Variants {
-			grams, label := variantWeight(p, v)
+			grams, label, src := variantWeight(p, v)
 			if grams == 0 {
+				continue
+			}
+			if f.portion != nil && (f.portion.MatchString(src) || f.portion.MatchString(v.Title)) {
+				continue
+			}
+			if must := store.VariantMustMatch; must != nil && !must.MatchString(src) && !must.MatchString(v.Title) {
 				continue
 			}
 			// A zero price is a placeholder or a free sample (Madcap, Onyx and SEY
@@ -132,7 +218,7 @@ func ToOffers(products []Product) ([]Offer, []Skipped) {
 			}
 		}
 		if len(bySize) == 0 {
-			skipped = append(skipped, Skipped{p.Handle, "no bag size stated: " + p.Title})
+			skipped = append(skipped, Skipped{p.Handle, "no size stated: " + p.Title})
 			continue
 		}
 		sizes := make([]int, 0, len(bySize))
@@ -156,19 +242,21 @@ func better(a, b Offer) bool {
 }
 
 // The size usually sits in an option ("12 oz / Whole Bean"); single-size
-// coffees often state it only in the product title.
-func variantWeight(p Product, v Variant) (int, string) {
+// products often state it only in the product title. The text the size was
+// read from is returned too, for the portion check.
+func variantWeight(p Product, v Variant) (int, string, string) {
 	for _, opt := range []*string{v.Option1, v.Option2, v.Option3} {
 		if opt != nil {
 			if g, l := ParseWeight(*opt); g > 0 {
-				return g, l
+				return g, l, *opt
 			}
 		}
 	}
 	if g, l := ParseWeight(v.Title); g > 0 {
-		return g, l
+		return g, l, v.Title
 	}
-	return ParseWeight(p.Title)
+	g, l := ParseWeight(p.Title)
+	return g, l, p.Title
 }
 
 // parseMinor turns a decimal price string ("12.50") into minor units (1250)

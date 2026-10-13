@@ -24,6 +24,12 @@ var ErrRateLimited = errors.New("rate limited (429)")
 // front of the store (403 with cf-mitigated: challenge).
 var ErrChallenged = errors.New("bot challenge (403)")
 
+// ErrPageCap comes back WITH the products read so far when the catalog
+// still had pages at MaxPages. The cap is a guard against a store that never
+// returns an empty page, not a limit on purpose: a capped catalog is stored
+// and the caller warns about it.
+var ErrPageCap = errors.New("catalog cut at the page cap")
+
 // NewTransport returns the transport store requests must use.
 //
 // Compression is OFF on purpose. With an Accept-Encoding header, Cloudflare
@@ -80,7 +86,7 @@ func (c *Client) FetchProducts(ctx context.Context, baseURL string, m market.Mar
 		}
 		all = append(all, products...)
 	}
-	return all, nil
+	return all, ErrPageCap
 }
 
 func (c *Client) fetchPage(ctx context.Context, pageURL string) ([]Product, error) {
