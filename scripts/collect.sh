@@ -3,6 +3,9 @@
 #
 #   0 9 * * * /home/ubuntu/cupproof/scripts/collect.sh
 #
+# Extra arguments go to "cupproof scrape" (collect.sh -only heart reads one
+# store: a cheap end-to-end check of this script).
+#
 # The collector is the same image as the site ("cupproof scrape"), run once
 # and removed. It joins the sister site's compose network because its
 # database lives in that Postgres (database "cupproof", own role; the
@@ -30,7 +33,7 @@ fi
 {
   echo "=== $(date -u +%FT%TZ) start"
   docker run --rm --name cupproof-collect --network wheyproof_default \
-    --env-file "$DIR/.env" --memory 256m cupproof scrape
+    --env-file "$DIR/.env" --memory 256m cupproof scrape "$@"
   rc=$?
   echo "=== $(date -u +%FT%TZ) exit $rc"
 } >> "$LOG" 2>&1
