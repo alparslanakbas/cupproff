@@ -4,6 +4,7 @@ package shopify
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,15 +57,27 @@ type Offer struct {
 // Not coffee beans even when a size appears in the text ("12 oz mug").
 // "cup" and "filter" are deliberately absent: "Cup of Excellence" lots and
 // "Filter Roast" coffees are among the coffees we most want to keep.
+// Wholesale listings ("… (WS)", Madcap) are trade prices, not what a
+// customer pays, so they are left out too.
 var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|kettles?|grinders?|drippers?|scales?|candles?|` +
-	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted)\b`)
+	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
+	`wholesale)\b|\(ws\)`)
 
 // The store's own product type is the stronger signal when it is set: on
 // 13 Oct 2026 "Drinkware" cups ("Latte Cup 12oz"), "Gifts" (honey 12oz) and
 // "Green" (unroasted beans, not comparable with roasted coffee) slipped past
 // the title check because their text states a size.
+// Added on the second roaster round (13 Oct 2026, product types seen in the
+// stores' own catalogs): tea (Passenger sells tea), "Goods", "Sundry Retail",
+// "RTD" (ready-to-drink cans); brew equipment is caught by "equipment". "retail" and
+// "brew" are left out on purpose: "Retail Coffee" and "Cold Brew" blends are coffee.
 var notCoffeeType = regexp.MustCompile(`(?i)\b(drinkware|gifts?|green|unroasted|merch(andise)?|apparel|equipment|` +
-	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?)\b`)
+	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?|teas?|goods|sundry|rtd|ready[ -]to[ -]drink)\b`)
+
+// White-label and wholesale products carry trade prices for another brand,
+// not a price a customer pays: Onyx publishes dozens tagged "white-label"
+// with code names ("IO-E-05", $4.58 for 8.8 oz; 13 Oct 2026).
+var notConsumerTag = regexp.MustCompile(`(?i)^(white[- ]?label|wholesale|private[- ]?label)$`)
 
 // Skipped explains why a product produced no offers, for the scrape report.
 type Skipped struct {
@@ -83,14 +96,21 @@ func ToOffers(products []Product) ([]Offer, []Skipped) {
 			skipped = append(skipped, Skipped{p.Handle, "not coffee: " + p.Title})
 			continue
 		}
+		if slices.ContainsFunc(p.Tags, func(tag string) bool { return notConsumerTag.MatchString(strings.TrimSpace(tag)) }) {
+			skipped = append(skipped, Skipped{p.Handle, "not a consumer listing: " + p.Title})
+			continue
+		}
 		bySize := map[int]Offer{}
 		for _, v := range p.Variants {
 			grams, label := variantWeight(p, v)
 			if grams == 0 {
 				continue
 			}
+			// A zero price is a placeholder or a free sample (Madcap, Onyx and SEY
+			// each had one on 13 Oct 2026), not a price; storing it would also
+			// break the price > 0 check and roll back the whole store.
 			price, err := parseMinor(v.Price)
-			if err != nil {
+			if err != nil || price <= 0 {
 				continue
 			}
 			o := Offer{

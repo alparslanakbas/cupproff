@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
@@ -28,6 +29,7 @@ type Runner struct {
 	Ingest *ingest.Service
 	Client *shopify.Client
 	Log    *slog.Logger
+	Only   []string // when set, only these roaster slugs are read
 }
 
 // Run reads every active Shopify roaster for one market and returns how
@@ -38,7 +40,7 @@ func (r *Runner) Run(ctx context.Context, m market.Market) (failed int, err erro
 		return 0, err
 	}
 	for _, ro := range roasters {
-		if ro.Platform != "shopify" {
+		if ro.Platform != "shopify" || (len(r.Only) > 0 && !slices.Contains(r.Only, ro.Slug)) {
 			continue
 		}
 		if err := r.one(ctx, ro.Slug, ro.BaseUrl, m); err != nil {

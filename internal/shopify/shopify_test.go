@@ -62,6 +62,27 @@ func TestToOffersSkipsNonCoffeeProductTypes(t *testing.T) {
 	}
 }
 
+// From the second roaster round (13 Oct 2026): a $0 sample, a wholesale
+// "(WS)" listing and a white-label product must not become offers; tea and
+// "Goods" are not coffee.
+func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
+	products := []Product{
+		{Title: "Spark Sample", Handle: "spark-sample-ws", Variants: []Variant{{Title: "4 oz", Price: "0.00", Available: true}}},
+		{Title: "Elefante Extended Fermentation (WS)", Variants: []Variant{{Title: "5 lb", Price: "90.00", Available: true}}},
+		{Title: "Red Jasmine 2026", ProductType: "Tea", Variants: []Variant{{Title: "2 oz", Price: "14.00", Available: true}}},
+		{Title: "Finca Mercado Bag", ProductType: "Goods", Variants: []Variant{{Title: "12 oz", Price: "20.00", Available: true}}},
+		{Title: "IO-E-05", Tags: []string{"bigface", "white-label"}, Variants: []Variant{{Title: "8.8oz", Price: "4.58", Available: true}}},
+		{Title: "Elefante Extended Fermentation", Variants: []Variant{
+			{Title: "12 oz", Price: "0.00", Available: true},
+			{Title: "2 lb", Price: "52.00", Available: true},
+		}},
+	}
+	offers, _ := ToOffers(products)
+	if len(offers) != 1 || offers[0].WeightGrams != 907 || offers[0].PriceMinor != 5200 {
+		t.Fatalf("offers = %+v; want only the consumer 2 lb bag (the $0 size dropped)", offers)
+	}
+}
+
 func TestToOffersFoldsGrindIntoSizeAndKeepsCheapestAvailable(t *testing.T) {
 	p := Product{
 		ID: 1, Title: "Ethiopia Guji", Handle: "ethiopia-guji",

@@ -2,7 +2,7 @@
 //
 //	cupproof serve     serve the site
 //	cupproof migrate   apply database migrations
-//	cupproof scrape    read every active roaster once and store the prices
+//	cupproof scrape [-only a,b]  read active roasters once and store the prices
 //
 // Configuration comes from the environment (DATABASE_URL, SITE_URL, ADDR);
 // a local .env file is read when present, never required.
@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -48,7 +49,7 @@ func main() {
 	case "migrate":
 		err = db.Migrate(ctx, mustEnv("DATABASE_URL"))
 	case "scrape":
-		err = runScrape(ctx, log)
+		err = runScrape(ctx, log, os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -96,7 +97,12 @@ func serve(ctx context.Context, log *slog.Logger) error {
 // The scraper identifies itself; the token matches the robots.txt checks.
 const userAgent = "Mozilla/5.0 (compatible; CupProofBot/0.1)"
 
-func runScrape(ctx context.Context, log *slog.Logger) error {
+func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
+	fs := flag.NewFlagSet("scrape", flag.ExitOnError)
+	only := fs.String("only", "", "comma-separated roaster slugs to read (default: all active)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	pool, err := pgxpool.New(ctx, mustEnv("DATABASE_URL"))
 	if err != nil {
 		return err
@@ -111,7 +117,8 @@ func runScrape(ctx context.Context, log *slog.Logger) error {
 			PageDelay: 3 * time.Second,
 			MaxPages:  4,
 		},
-		Log: log,
+		Log:  log,
+		Only: splitList(*only),
 	}
 	failed, err := runner.Run(ctx, market.US)
 	if err != nil {
@@ -121,6 +128,16 @@ func runScrape(ctx context.Context, log *slog.Logger) error {
 		return fmt.Errorf("%d roasters failed", failed)
 	}
 	return nil
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func mustEnv(key string) string {

@@ -47,9 +47,16 @@ func (q *Queries) CoffeeBySlug(ctx context.Context, slug string) (CoffeeBySlugRo
 }
 
 const countCoffees = `-- name: CountCoffees :one
-SELECT count(DISTINCT c.id)
-FROM coffees c
-JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
+SELECT count(DISTINCT o.coffee_id)
+FROM offers o
+JOIN LATERAL (
+    SELECT p.available
+    FROM price_points p
+    WHERE p.offer_id = o.id
+    ORDER BY p.seen_at DESC
+    LIMIT 1
+) lp ON true
+WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND lp.available
 `
 
 func (q *Queries) CountCoffees(ctx context.Context, market string) (int64, error) {
@@ -143,6 +150,7 @@ FROM (
         ORDER BY p.seen_at DESC
         LIMIT 1
     ) lp ON true
+    WHERE lp.available
     ORDER BY c.id, o.weight_grams
 ) x
 ORDER BY x.title, x.slug
@@ -168,8 +176,11 @@ type ListCoffeesRow struct {
 	Available      bool
 }
 
-// Market listing: one card per coffee, showing its smallest bag that was
-// seen in the last 48 hours (older offers are stale, not current prices).
+// Market listing: one card per coffee IN STOCK, showing its smallest bag
+// that can be bought now. Most roasters keep sold-out lots published (13 Oct
+// 2026: SEY 9 of 669 coffees in stock, Onyx 167 of 527), and a listing of
+// sold-out coffees is useless to a buyer. Offers not seen for 48 hours are
+// stale and never shown.
 func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]ListCoffeesRow, error) {
 	rows, err := q.db.Query(ctx, listCoffees, arg.Market, arg.Skip, arg.PageSize)
 	if err != nil {
@@ -242,7 +253,8 @@ usual AS (
     GROUP BY d.offer_id
 ),
 alltime AS (
-    SELECT p.offer_id, min(p.price_minor) AS low, min(p.seen_at) AS first
+    SELECT p.offer_id, min(p.price_minor) AS low, min(p.seen_at) AS first,
+           max(p.seen_at) FILTER (WHERE p.available) AS last_available
     FROM price_points p
     JOIN o ON o.id = p.offer_id
     GROUP BY p.offer_id
@@ -252,7 +264,8 @@ SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
        COALESCE(low.low30, 0)::bigint AS low30,
        COALESCE(usual.usual, 0)::bigint AS usual,
        COALESCE(seg.restart, alltime.first)::timestamptz AS tracked_since,
-       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0)::bigint AS lowest_tracked
+       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0)::bigint AS lowest_tracked,
+       alltime.last_available::timestamptz AS last_available
 FROM o
 JOIN LATERAL (
     SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
@@ -287,6 +300,7 @@ type OffersForCoffeeRow struct {
 	Usual          int64
 	TrackedSince   pgtype.Timestamptz
 	LowestTracked  int64
+	LastAvailable  pgtype.Timestamptz
 }
 
 // Offers of one coffee in one market with everything the verdict needs.
@@ -325,6 +339,7 @@ func (q *Queries) OffersForCoffee(ctx context.Context, arg OffersForCoffeeParams
 			&i.Usual,
 			&i.TrackedSince,
 			&i.LowestTracked,
+			&i.LastAvailable,
 		); err != nil {
 			return nil, err
 		}
@@ -438,6 +453,10 @@ const sitemapCoffees = `-- name: SitemapCoffees :many
 SELECT c.slug, max(o.last_seen_at)::timestamptz AS last_seen
 FROM coffees c
 JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
+WHERE EXISTS (
+    SELECT 1 FROM price_points p
+    WHERE p.offer_id = o.id AND p.available AND p.seen_at > now() - interval '30 days'
+)
 GROUP BY c.slug
 ORDER BY c.slug
 `
@@ -447,6 +466,9 @@ type SitemapCoffeesRow struct {
 	LastSeen pgtype.Timestamptz
 }
 
+// A finished lot leaves the sitemap 30 days after it was last in stock
+// (design decision K10); its page stays, with noindex, for anyone who
+// bookmarked it, and comes back if the roaster restocks it.
 func (q *Queries) SitemapCoffees(ctx context.Context, market string) ([]SitemapCoffeesRow, error) {
 	rows, err := q.db.Query(ctx, sitemapCoffees, market)
 	if err != nil {

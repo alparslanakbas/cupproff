@@ -246,12 +246,21 @@ func (s *Server) coffee(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	// A finished lot keeps its page (bookmarks, price history) but asks not to
+	// be indexed once it hasn't been in stock for 30 days (decision K10).
+	inStockRecently := false
+	for _, o := range rows {
+		if o.LastAvailable.Valid && now.Sub(o.LastAvailable.Time) <= 30*24*time.Hour {
+			inStockRecently = true
+		}
+	}
 	url := s.SiteURL + "/" + m.Code + "/coffee/" + c.Slug
 	p := views.Page{
 		Title: c.Title + " by " + c.RoasterName + " — price history — CupProof", Lang: m.Lang,
 		Description: fmt.Sprintf("%s by %s: today's price for every bag size and whether it is a real price drop.", c.Title, c.RoasterName),
 		Canonical:   url, Alternates: []views.Alternate{{Lang: m.Lang, URL: url}, {Lang: "x-default", URL: url}},
-		JSONLD: string(ldJSON),
+		JSONLD:  string(ldJSON),
+		NoIndex: !inStockRecently,
 	}
 	s.render(w, r, http.StatusOK, views.CoffeePage(p, view))
 }
