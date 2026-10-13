@@ -116,12 +116,23 @@ func (s *Server) marketHome(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	now := time.Now()
 	cards := make([]views.Card, 0, len(rows))
 	for _, c := range rows {
 		card := views.Card{
 			URL: "/" + m.Code + "/coffee/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
 			Size: c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
-			PerKilo: perKilo(c.PriceMinor, c.WeightGrams, c.Currency), Available: c.Available,
+			PerKilo: perKilo(c.PriceMinor, c.WeightGrams, c.Currency), Available: true, // the listing is in-stock only
+		}
+		// Same rules as the coffee page, from the same summary row, so a card
+		// and its page can never disagree.
+		sum := pricing.Summary{Latest: c.PriceMinor, Low30: c.Low30, Usual: c.Usual,
+			TrackedSince: c.TrackedSince.Time, LowestTracked: c.LowestTracked}
+		card.RealDrop = sum.DropPercent()
+		if since, ok := sum.LowestSince(now); ok {
+			card.LowestSince = since.UTC().Format("Jan 2, 2006")
+		} else {
+			card.LowestIn30 = sum.LowestIn30Days()
 		}
 		if c.ImageUrl != nil {
 			card.ImageURL = cdnImage(*c.ImageUrl, 480)

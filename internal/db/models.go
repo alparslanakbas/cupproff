@@ -32,6 +32,20 @@ type Offer struct {
 	LastSeenAt  pgtype.Timestamptz
 }
 
+type OfferSummary struct {
+	OfferID         int64
+	LatestPrice     int64
+	LatestCompareAt *int64
+	LatestAvailable bool
+	LatestSeenAt    pgtype.Timestamptz
+	Low30           int64
+	Usual           int64
+	TrackedSince    pgtype.Timestamptz
+	LowestTracked   int64
+	LastAvailable   pgtype.Timestamptz
+	RefreshedAt     pgtype.Timestamptz
+}
+
 type PricePoint struct {
 	OfferID        int64
 	SeenAt         pgtype.Timestamptz
@@ -41,11 +55,15 @@ type PricePoint struct {
 }
 
 type Roaster struct {
-	ID        int64
-	Slug      string
-	Name      string
-	BaseUrl   string
-	Platform  string
-	Active    bool
-	CreatedAt pgtype.Timestamptz
+	ID            int64
+	Slug          string
+	Name          string
+	BaseUrl       string
+	Platform      string
+	Active        bool
+	CreatedAt     pgtype.Timestamptz
+	Country       *string
+	Currency      *string
+	ShipsTo       []string
+	MetaCheckedAt pgtype.Timestamptz
 }

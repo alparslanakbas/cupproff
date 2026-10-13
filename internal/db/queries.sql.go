@@ -49,14 +49,8 @@ func (q *Queries) CoffeeBySlug(ctx context.Context, slug string) (CoffeeBySlugRo
 const countCoffees = `-- name: CountCoffees :one
 SELECT count(DISTINCT o.coffee_id)
 FROM offers o
-JOIN LATERAL (
-    SELECT p.available
-    FROM price_points p
-    WHERE p.offer_id = o.id
-    ORDER BY p.seen_at DESC
-    LIMIT 1
-) lp ON true
-WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND lp.available
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available
 `
 
 func (q *Queries) CountCoffees(ctx context.Context, market string) (int64, error) {
@@ -133,24 +127,19 @@ func (q *Queries) ListActiveRoasters(ctx context.Context) ([]ListActiveRoastersR
 }
 
 const listCoffees = `-- name: ListCoffees :many
-SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams,
-       x.currency, x.price_minor, x.compare_at_minor, x.available
+SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams, x.currency,
+       x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked
 FROM (
     SELECT DISTINCT ON (c.id)
         c.slug, c.title, c.image_url, r.name AS roaster_name,
         o.size_label, o.weight_grams, o.currency,
-        lp.price_minor, lp.compare_at_minor, lp.available
+        s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
+        s.low30, s.usual, s.tracked_since, s.lowest_tracked
     FROM coffees c
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
-    JOIN LATERAL (
-        SELECT p.price_minor, p.compare_at_minor, p.available
-        FROM price_points p
-        WHERE p.offer_id = o.id
-        ORDER BY p.seen_at DESC
-        LIMIT 1
-    ) lp ON true
-    WHERE lp.available
+    JOIN offer_summaries s ON s.offer_id = o.id
+    WHERE s.latest_available
     ORDER BY c.id, o.weight_grams
 ) x
 ORDER BY x.title, x.slug
@@ -173,14 +162,17 @@ type ListCoffeesRow struct {
 	Currency       string
 	PriceMinor     int64
 	CompareAtMinor *int64
-	Available      bool
+	Low30          int64
+	Usual          int64
+	TrackedSince   pgtype.Timestamptz
+	LowestTracked  int64
 }
 
 // Market listing: one card per coffee IN STOCK, showing its smallest bag
 // that can be bought now. Most roasters keep sold-out lots published (13 Oct
 // 2026: SEY 9 of 669 coffees in stock, Onyx 167 of 527), and a listing of
 // sold-out coffees is useless to a buyer. Offers not seen for 48 hours are
-// stale and never shown.
+// stale and never shown. Verdict figures come from offer_summaries.
 func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]ListCoffeesRow, error) {
 	rows, err := q.db.Query(ctx, listCoffees, arg.Market, arg.Skip, arg.PageSize)
 	if err != nil {
@@ -200,7 +192,10 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 			&i.Currency,
 			&i.PriceMinor,
 			&i.CompareAtMinor,
-			&i.Available,
+			&i.Low30,
+			&i.Usual,
+			&i.TrackedSince,
+			&i.LowestTracked,
 		); err != nil {
 			return nil, err
 		}
@@ -213,71 +208,13 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 }
 
 const offersForCoffee = `-- name: OffersForCoffee :many
-WITH o AS (
-    SELECT id, size_label, weight_grams, currency, variant_id
-    FROM offers
-    WHERE coffee_id = $1 AND market = $2 AND last_seen_at > now() - interval '48 hours'
-),
-seg AS (
-    SELECT a.offer_id,
-           max(a.seen_at) FILTER (WHERE a.seen_at - a.prev > interval '72 hours') AS restart
-    FROM (
-        SELECT p.offer_id, p.seen_at,
-               lag(p.seen_at) OVER (PARTITION BY p.offer_id ORDER BY p.seen_at) AS prev
-        FROM price_points p
-        JOIN o ON o.id = p.offer_id
-        WHERE p.seen_at >= now() - interval '30 days'
-    ) a
-    GROUP BY a.offer_id
-),
-win AS (
-    SELECT p.offer_id, p.price_minor, p.seen_at
-    FROM price_points p
-    JOIN o ON o.id = p.offer_id
-    LEFT JOIN seg ON seg.offer_id = p.offer_id
-    WHERE p.seen_at >= COALESCE(seg.restart, now() - interval '30 days')
-),
-low AS (
-    SELECT offer_id, min(price_minor) AS low30
-    FROM win
-    GROUP BY offer_id
-),
-usual AS (
-    SELECT d.offer_id, max(d.price_minor) AS usual
-    FROM (
-        SELECT offer_id, price_minor
-        FROM win
-        GROUP BY offer_id, price_minor
-        HAVING count(DISTINCT (seen_at AT TIME ZONE 'UTC')::date) >= 7
-    ) d
-    GROUP BY d.offer_id
-),
-alltime AS (
-    SELECT p.offer_id, min(p.price_minor) AS low, min(p.seen_at) AS first,
-           max(p.seen_at) FILTER (WHERE p.available) AS last_available
-    FROM price_points p
-    JOIN o ON o.id = p.offer_id
-    GROUP BY p.offer_id
-)
 SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
-       lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
-       COALESCE(low.low30, 0)::bigint AS low30,
-       COALESCE(usual.usual, 0)::bigint AS usual,
-       COALESCE(seg.restart, alltime.first)::timestamptz AS tracked_since,
-       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0)::bigint AS lowest_tracked,
-       alltime.last_available::timestamptz AS last_available
-FROM o
-JOIN LATERAL (
-    SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
-    FROM price_points p
-    WHERE p.offer_id = o.id
-    ORDER BY p.seen_at DESC
-    LIMIT 1
-) lp ON true
-LEFT JOIN seg ON seg.offer_id = o.id
-LEFT JOIN low ON low.offer_id = o.id
-LEFT JOIN usual ON usual.offer_id = o.id
-LEFT JOIN alltime ON alltime.offer_id = o.id
+       s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
+       s.latest_available AS available, s.latest_seen_at AS seen_at,
+       s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.last_available
+FROM offers o
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE o.coffee_id = $1 AND o.market = $2 AND o.last_seen_at > now() - interval '48 hours'
 ORDER BY o.weight_grams
 `
 
@@ -303,19 +240,7 @@ type OffersForCoffeeRow struct {
 	LastAvailable  pgtype.Timestamptz
 }
 
-// Offers of one coffee in one market with everything the verdict needs.
-// The rules are the sister sites' (TR PriceSummaryRefresher, TakipDibi):
-//   - gap rule: if two readings in the last 30 days are more than 72 hours
-//     apart, the offer restarted at the reading after the latest such gap and
-//     only readings from there on count. A coffee that vanished and came back
-//     (a new lot, a changed bag) is never measured against its old price.
-//   - low30: the lowest price in that window.
-//   - usual: the highest price seen on at least 7 different UTC days in that
-//     window; 0 when there is none yet ("not enough history").
-//   - tracked_since / lowest_tracked: where tracking starts (the gap restart,
-//     else the first reading ever) and the lowest price since then.
-//
-// Prices are > 0 by CHECK, so 0 always means "none".
+// Offers of one coffee in one market with their summaries.
 func (q *Queries) OffersForCoffee(ctx context.Context, arg OffersForCoffeeParams) ([]OffersForCoffeeRow, error) {
 	rows, err := q.db.Query(ctx, offersForCoffee, arg.CoffeeID, arg.Market)
 	if err != nil {
@@ -383,6 +308,102 @@ func (q *Queries) PriceHistory(ctx context.Context, offerIds []int64) ([]PriceHi
 		return nil, err
 	}
 	return items, nil
+}
+
+const refreshOfferSummaries = `-- name: RefreshOfferSummaries :execrows
+WITH o AS (
+    SELECT id FROM offers WHERE last_seen_at > now() - interval '48 hours'
+),
+seg AS (
+    SELECT a.offer_id,
+           max(a.seen_at) FILTER (WHERE a.seen_at - a.prev > interval '72 hours') AS restart
+    FROM (
+        SELECT p.offer_id, p.seen_at,
+               lag(p.seen_at) OVER (PARTITION BY p.offer_id ORDER BY p.seen_at) AS prev
+        FROM price_points p
+        JOIN o ON o.id = p.offer_id
+        WHERE p.seen_at >= now() - interval '30 days'
+    ) a
+    GROUP BY a.offer_id
+),
+win AS (
+    SELECT p.offer_id, p.price_minor, p.seen_at
+    FROM price_points p
+    JOIN o ON o.id = p.offer_id
+    LEFT JOIN seg ON seg.offer_id = p.offer_id
+    WHERE p.seen_at >= COALESCE(seg.restart, now() - interval '30 days')
+),
+low AS (
+    SELECT offer_id, min(price_minor) AS low30 FROM win GROUP BY offer_id
+),
+usual AS (
+    SELECT d.offer_id, max(d.price_minor) AS usual
+    FROM (
+        SELECT offer_id, price_minor
+        FROM win
+        GROUP BY offer_id, price_minor
+        HAVING count(DISTINCT (seen_at AT TIME ZONE 'UTC')::date) >= 7
+    ) d
+    GROUP BY d.offer_id
+),
+alltime AS (
+    SELECT p.offer_id, min(p.price_minor) AS low, min(p.seen_at) AS first,
+           max(p.seen_at) FILTER (WHERE p.available) AS last_available
+    FROM price_points p
+    JOIN o ON o.id = p.offer_id
+    GROUP BY p.offer_id
+)
+INSERT INTO offer_summaries (offer_id, latest_price, latest_compare_at, latest_available, latest_seen_at,
+                             low30, usual, tracked_since, lowest_tracked, last_available, refreshed_at)
+SELECT o.id, lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
+       COALESCE(low.low30, 0), COALESCE(usual.usual, 0), COALESCE(seg.restart, alltime.first),
+       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0),
+       alltime.last_available, now()
+FROM o
+JOIN LATERAL (
+    SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
+    FROM price_points p
+    WHERE p.offer_id = o.id
+    ORDER BY p.seen_at DESC
+    LIMIT 1
+) lp ON true
+JOIN alltime ON alltime.offer_id = o.id
+LEFT JOIN seg ON seg.offer_id = o.id
+LEFT JOIN low ON low.offer_id = o.id
+LEFT JOIN usual ON usual.offer_id = o.id
+ON CONFLICT (offer_id) DO UPDATE
+SET latest_price = EXCLUDED.latest_price,
+    latest_compare_at = EXCLUDED.latest_compare_at,
+    latest_available = EXCLUDED.latest_available,
+    latest_seen_at = EXCLUDED.latest_seen_at,
+    low30 = EXCLUDED.low30,
+    usual = EXCLUDED.usual,
+    tracked_since = EXCLUDED.tracked_since,
+    lowest_tracked = EXCLUDED.lowest_tracked,
+    last_available = EXCLUDED.last_available,
+    refreshed_at = EXCLUDED.refreshed_at
+`
+
+// Recomputes every current offer's summary; run after each scrape. One
+// set-based statement, no loop per offer. The rules are the sister sites'
+// (TR PriceSummaryRefresher, TakipDibi):
+//   - gap rule: if two readings in the last 30 days are more than 72 hours
+//     apart, the offer restarted at the reading after the latest such gap and
+//     only readings from there on count. A coffee that vanished and came back
+//     (a new lot, a changed bag) is never measured against its old price.
+//   - low30: the lowest price in that window.
+//   - usual: the highest price seen on at least 7 different UTC days in that
+//     window; 0 when there is none yet ("not enough history").
+//   - tracked_since / lowest_tracked: where tracking starts (the gap restart,
+//     else the first reading ever) and the lowest price since then.
+//
+// Prices are > 0 by CHECK, so 0 always means "none".
+func (q *Queries) RefreshOfferSummaries(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, refreshOfferSummaries)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const roasterBySlug = `-- name: RoasterBySlug :one
@@ -453,10 +474,8 @@ const sitemapCoffees = `-- name: SitemapCoffees :many
 SELECT c.slug, max(o.last_seen_at)::timestamptz AS last_seen
 FROM coffees c
 JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
-WHERE EXISTS (
-    SELECT 1 FROM price_points p
-    WHERE p.offer_id = o.id AND p.available AND p.seen_at > now() - interval '30 days'
-)
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE s.last_available > now() - interval '30 days'
 GROUP BY c.slug
 ORDER BY c.slug
 `
@@ -487,6 +506,29 @@ func (q *Queries) SitemapCoffees(ctx context.Context, market string) ([]SitemapC
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateRoasterMeta = `-- name: UpdateRoasterMeta :exec
+UPDATE roasters
+SET country = $1, currency = $2, ships_to = $3::text[], meta_checked_at = now()
+WHERE slug = $4
+`
+
+type UpdateRoasterMetaParams struct {
+	Country  *string
+	Currency *string
+	ShipsTo  []string
+	Slug     string
+}
+
+func (q *Queries) UpdateRoasterMeta(ctx context.Context, arg UpdateRoasterMetaParams) error {
+	_, err := q.db.Exec(ctx, updateRoasterMeta,
+		arg.Country,
+		arg.Currency,
+		arg.ShipsTo,
+		arg.Slug,
+	)
+	return err
 }
 
 const upsertCoffee = `-- name: UpsertCoffee :one

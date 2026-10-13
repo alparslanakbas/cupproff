@@ -38,26 +38,21 @@ ON CONFLICT (offer_id, seen_at) DO NOTHING;
 -- that can be bought now. Most roasters keep sold-out lots published (13 Oct
 -- 2026: SEY 9 of 669 coffees in stock, Onyx 167 of 527), and a listing of
 -- sold-out coffees is useless to a buyer. Offers not seen for 48 hours are
--- stale and never shown.
+-- stale and never shown. Verdict figures come from offer_summaries.
 -- name: ListCoffees :many
-SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams,
-       x.currency, x.price_minor, x.compare_at_minor, x.available
+SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams, x.currency,
+       x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked
 FROM (
     SELECT DISTINCT ON (c.id)
         c.slug, c.title, c.image_url, r.name AS roaster_name,
         o.size_label, o.weight_grams, o.currency,
-        lp.price_minor, lp.compare_at_minor, lp.available
+        s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
+        s.low30, s.usual, s.tracked_since, s.lowest_tracked
     FROM coffees c
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
-    JOIN LATERAL (
-        SELECT p.price_minor, p.compare_at_minor, p.available
-        FROM price_points p
-        WHERE p.offer_id = o.id
-        ORDER BY p.seen_at DESC
-        LIMIT 1
-    ) lp ON true
-    WHERE lp.available
+    JOIN offer_summaries s ON s.offer_id = o.id
+    WHERE s.latest_available
     ORDER BY c.id, o.weight_grams
 ) x
 ORDER BY x.title, x.slug
@@ -66,14 +61,8 @@ LIMIT @page_size OFFSET @skip;
 -- name: CountCoffees :one
 SELECT count(DISTINCT o.coffee_id)
 FROM offers o
-JOIN LATERAL (
-    SELECT p.available
-    FROM price_points p
-    WHERE p.offer_id = o.id
-    ORDER BY p.seen_at DESC
-    LIMIT 1
-) lp ON true
-WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND lp.available;
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available;
 
 -- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,
@@ -82,8 +71,20 @@ FROM coffees c
 JOIN roasters r ON r.id = c.roaster_id
 WHERE c.slug = $1;
 
--- Offers of one coffee in one market with everything the verdict needs.
--- The rules are the sister sites' (TR PriceSummaryRefresher, TakipDibi):
+-- Offers of one coffee in one market with their summaries.
+-- name: OffersForCoffee :many
+SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
+       s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
+       s.latest_available AS available, s.latest_seen_at AS seen_at,
+       s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.last_available
+FROM offers o
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE o.coffee_id = @coffee_id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
+ORDER BY o.weight_grams;
+
+-- Recomputes every current offer's summary; run after each scrape. One
+-- set-based statement, no loop per offer. The rules are the sister sites'
+-- (TR PriceSummaryRefresher, TakipDibi):
 --   * gap rule: if two readings in the last 30 days are more than 72 hours
 --     apart, the offer restarted at the reading after the latest such gap and
 --     only readings from there on count. A coffee that vanished and came back
@@ -94,11 +95,9 @@ WHERE c.slug = $1;
 --   * tracked_since / lowest_tracked: where tracking starts (the gap restart,
 --     else the first reading ever) and the lowest price since then.
 -- Prices are > 0 by CHECK, so 0 always means "none".
--- name: OffersForCoffee :many
+-- name: RefreshOfferSummaries :execrows
 WITH o AS (
-    SELECT id, size_label, weight_grams, currency, variant_id
-    FROM offers
-    WHERE coffee_id = @coffee_id AND market = @market AND last_seen_at > now() - interval '48 hours'
+    SELECT id FROM offers WHERE last_seen_at > now() - interval '48 hours'
 ),
 seg AS (
     SELECT a.offer_id,
@@ -120,9 +119,7 @@ win AS (
     WHERE p.seen_at >= COALESCE(seg.restart, now() - interval '30 days')
 ),
 low AS (
-    SELECT offer_id, min(price_minor) AS low30
-    FROM win
-    GROUP BY offer_id
+    SELECT offer_id, min(price_minor) AS low30 FROM win GROUP BY offer_id
 ),
 usual AS (
     SELECT d.offer_id, max(d.price_minor) AS usual
@@ -141,13 +138,12 @@ alltime AS (
     JOIN o ON o.id = p.offer_id
     GROUP BY p.offer_id
 )
-SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
-       lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
-       COALESCE(low.low30, 0)::bigint AS low30,
-       COALESCE(usual.usual, 0)::bigint AS usual,
-       COALESCE(seg.restart, alltime.first)::timestamptz AS tracked_since,
-       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0)::bigint AS lowest_tracked,
-       alltime.last_available::timestamptz AS last_available
+INSERT INTO offer_summaries (offer_id, latest_price, latest_compare_at, latest_available, latest_seen_at,
+                             low30, usual, tracked_since, lowest_tracked, last_available, refreshed_at)
+SELECT o.id, lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
+       COALESCE(low.low30, 0), COALESCE(usual.usual, 0), COALESCE(seg.restart, alltime.first),
+       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0),
+       alltime.last_available, now()
 FROM o
 JOIN LATERAL (
     SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
@@ -156,11 +152,21 @@ JOIN LATERAL (
     ORDER BY p.seen_at DESC
     LIMIT 1
 ) lp ON true
+JOIN alltime ON alltime.offer_id = o.id
 LEFT JOIN seg ON seg.offer_id = o.id
 LEFT JOIN low ON low.offer_id = o.id
 LEFT JOIN usual ON usual.offer_id = o.id
-LEFT JOIN alltime ON alltime.offer_id = o.id
-ORDER BY o.weight_grams;
+ON CONFLICT (offer_id) DO UPDATE
+SET latest_price = EXCLUDED.latest_price,
+    latest_compare_at = EXCLUDED.latest_compare_at,
+    latest_available = EXCLUDED.latest_available,
+    latest_seen_at = EXCLUDED.latest_seen_at,
+    low30 = EXCLUDED.low30,
+    usual = EXCLUDED.usual,
+    tracked_since = EXCLUDED.tracked_since,
+    lowest_tracked = EXCLUDED.lowest_tracked,
+    last_available = EXCLUDED.last_available,
+    refreshed_at = EXCLUDED.refreshed_at;
 
 -- A finished lot leaves the sitemap 30 days after it was last in stock
 -- (design decision K10); its page stays, with noindex, for anyone who
@@ -169,10 +175,8 @@ ORDER BY o.weight_grams;
 SELECT c.slug, max(o.last_seen_at)::timestamptz AS last_seen
 FROM coffees c
 JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
-WHERE EXISTS (
-    SELECT 1 FROM price_points p
-    WHERE p.offer_id = o.id AND p.available AND p.seen_at > now() - interval '30 days'
-)
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE s.last_available > now() - interval '30 days'
 GROUP BY c.slug
 ORDER BY c.slug;
 
@@ -193,3 +197,8 @@ LEFT JOIN offers o ON o.coffee_id = c.id
 WHERE r.active
 GROUP BY r.slug
 ORDER BY r.slug;
+
+-- name: UpdateRoasterMeta :exec
+UPDATE roasters
+SET country = @country, currency = @currency, ships_to = @ships_to::text[], meta_checked_at = now()
+WHERE slug = @slug;

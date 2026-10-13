@@ -89,6 +89,10 @@ func TestOffersForCoffeeAppliesTheGapRuleAndTracking(t *testing.T) {
 	}
 	add(tracked, 0, 2000)
 
+	// The rules live in the summary refresh; pages only read its rows.
+	if n, err := q.RefreshOfferSummaries(ctx); err != nil || n != 2 {
+		t.Fatalf("refresh: %d rows, err %v; want 2", n, err)
+	}
 	rows, err := q.OffersForCoffee(ctx, db.OffersForCoffeeParams{CoffeeID: coffeeID, Market: "en-us"})
 	if err != nil {
 		t.Fatal(err)

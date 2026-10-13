@@ -31,6 +31,9 @@ type Card struct {
 	PerKilo   string
 	StoreWas  string
 	Available bool
+	RealDrop    int
+	LowestIn30  bool
+	LowestSince string
 }
 
 // Pager links the pages of a listing with plain, crawlable links.
@@ -61,6 +64,14 @@ templ MarketHome(p Page, heading string, cards []Card, pg Pager) {
 							<span class="muted">{ c.PerKilo }</span>
 						}
 					</span>
+					if c.LowestSince != "" {
+						<span class="badge real">Lowest since { c.LowestSince }</span>
+					} else if c.LowestIn30 {
+						<span class="badge real">Lowest in 30 days</span>
+					}
+					if c.RealDrop > 0 {
+						<span class="badge real">{ fmt.Sprintf("Real drop −%d%%", c.RealDrop) }</span>
+					}
 					if c.StoreWas != "" {
 						<span class="badge campaign">Store sale · was { c.StoreWas }</span>
 					}
