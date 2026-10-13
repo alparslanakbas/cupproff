@@ -1,0 +1,5 @@
+.env
+CLAUDE.md
+.claude/
+/bin/
+*.exe

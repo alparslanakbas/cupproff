@@ -1,0 +1,64 @@
+/* Palette from the design doc §18; every text pair is WCAG AA (checked 13 Oct 2026). */
+:root {
+  --bg: #F5EFE6;
+  --surface: #FBF8F3;
+  --border: #E6DBCD;
+  --text: #2B2018;
+  --muted: #6B5A4D;
+  --accent: #8C4A2F;
+  --real: #2E6B4E;
+  --real-bg: #E3EFE7;
+  --campaign: #8A5A14;
+  --campaign-bg: #F7E7C8;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1C1512;
+    --surface: #261D18;
+    --border: #3A2D25;
+    --text: #F1E7DC;
+    --muted: #B8A698;
+    --accent: #D9926B;
+    --real: #7CC4A0;
+    --real-bg: #1F3A2D;
+    --campaign: #E0B060;
+    --campaign-bg: #3D2E14;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--font-body); }
+a { color: var(--accent); }
+h1 { font: 500 2rem/1.2 var(--font-display); margin: 0 0 .5rem; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+.site-header { display: flex; align-items: baseline; gap: 1rem; max-width: 1120px; margin: 0 auto; padding: 1rem; }
+.brand { font: 500 1.4rem var(--font-display); color: var(--text); text-decoration: none; }
+.tagline, .muted { color: var(--muted); }
+.small { font-size: .85rem; }
+.lede { color: var(--muted); max-width: 40rem; }
+.site-footer { max-width: 1120px; margin: 0 auto; padding: 1rem 1rem 3rem; color: var(--muted); font-size: .9rem; }
+.markets { list-style: none; padding: 0; font-size: 1.2rem; }
+.cards { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: .9rem; display: flex; flex-direction: column; gap: .3rem; }
+.card a { color: var(--text); text-decoration: none; }
+.card img { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: var(--border); }
+.card-title { display: block; font: 500 1.05rem/1.3 var(--font-display); margin-top: .5rem; }
+.price-row { display: flex; gap: .5rem; align-items: baseline; }
+.price { font-weight: 600; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; font-size: .8rem; padding: .1rem .6rem; border-radius: 999px; margin: .15rem .3rem .15rem 0; }
+.badge.real { background: var(--real-bg); color: var(--real); }
+.badge.campaign { background: var(--campaign-bg); color: var(--campaign); }
+.badge.out { border: 1px solid var(--border); color: var(--muted); }
+.crumbs { color: var(--muted); margin-bottom: 1rem; }
+.coffee { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 2rem; align-items: start; }
+.coffee-img { width: 100%; height: auto; border-radius: 14px; background: var(--border); }
+.offers { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+.offers th, .offers td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.offers th { font-weight: 500; color: var(--muted); font-size: .9rem; }
+.buy { white-space: nowrap; }
+@media (max-width: 720px) {
+  .coffee { grid-template-columns: 1fr; }
+  .offers th:nth-child(3), .offers td:nth-child(3) { display: none; }
+}

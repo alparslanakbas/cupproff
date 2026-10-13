@@ -1,0 +1,59 @@
+package views
+
+// Page is what every page tells the layout about itself.
+type Page struct {
+	Title       string
+	Description string
+	Lang        string
+	Canonical   string
+	Alternates  []Alternate
+	JSONLD      string // already marshalled with HTML escaping
+	NoIndex     bool
+}
+
+// Alternate is one hreflang sibling of the page.
+type Alternate struct {
+	Lang string
+	URL  string
+}
+
+templ Layout(p Page) {
+	<!DOCTYPE html>
+	<html lang={ p.Lang }>
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ p.Title }</title>
+			if p.Description != "" {
+				<meta name="description" content={ p.Description }/>
+			}
+			if p.NoIndex {
+				<meta name="robots" content="noindex"/>
+			} else {
+				<meta name="robots" content="max-image-preview:large"/>
+			}
+			if p.Canonical != "" {
+				<link rel="canonical" href={ templ.SafeURL(p.Canonical) }/>
+			}
+			for _, a := range p.Alternates {
+				<link rel="alternate" hreflang={ a.Lang } href={ templ.SafeURL(a.URL) }/>
+			}
+			<link rel="stylesheet" href="/static/site.css"/>
+			if p.JSONLD != "" {
+				@templ.Raw(`<script type="application/ld+json">` + p.JSONLD + `</script>`)
+			}
+		</head>
+		<body>
+			<header class="site-header">
+				<a class="brand" href="/">CupProof</a>
+				<span class="tagline">Coffee prices, with receipts</span>
+			</header>
+			<main class="wrap">
+				{ children... }
+			</main>
+			<footer class="site-footer">
+				<p>Prices are the ones each roaster shows to your country, read daily. A "real drop" is measured against the price seen on at least 7 days of the last 30, not against the store's own "was" price.</p>
+			</footer>
+		</body>
+	</html>
+}

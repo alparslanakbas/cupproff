@@ -1,0 +1,3 @@
+# Everything ships to Linux; keep LF in the repo and the working tree.
+* text=auto eol=lf
+*.exe binary

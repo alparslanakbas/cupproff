@@ -1,0 +1,161 @@
+// Command cupproof runs the site and its database migrations.
+//
+//	cupproof serve     serve the site
+//	cupproof migrate   apply database migrations
+//	cupproof scrape    read every active roaster once and store the prices
+//
+// Configuration comes from the environment (DATABASE_URL, SITE_URL, ADDR);
+// a local .env file is read when present, never required.
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/alparslanakbas/cupproof/internal/db"
+	"github.com/alparslanakbas/cupproof/internal/ingest"
+	"github.com/alparslanakbas/cupproof/internal/market"
+	"github.com/alparslanakbas/cupproof/internal/scrape"
+	"github.com/alparslanakbas/cupproof/internal/shopify"
+	"github.com/alparslanakbas/cupproof/internal/web"
+)
+
+func main() {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	loadDotEnv(".env")
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: cupproof serve | migrate | scrape")
+		os.Exit(2)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var err error
+	switch os.Args[1] {
+	case "serve":
+		err = serve(ctx, log)
+	case "migrate":
+		err = db.Migrate(ctx, mustEnv("DATABASE_URL"))
+	case "scrape":
+		err = runScrape(ctx, log)
+	default:
+		err = fmt.Errorf("unknown command %q", os.Args[1])
+	}
+	if err != nil {
+		log.Error("failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func serve(ctx context.Context, log *slog.Logger) error {
+	pool, err := pgxpool.New(ctx, mustEnv("DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	s := &web.Server{
+		Q:       db.New(pool),
+		SiteURL: strings.TrimSuffix(envOr("SITE_URL", "http://localhost:8080"), "/"),
+		Log:     log,
+	}
+	srv := &http.Server{
+		Addr:              envOr("ADDR", "127.0.0.1:8080"),
+		Handler:           s.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+	log.Info("serving", "addr", srv.Addr, "site", s.SiteURL)
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
+}
+
+// The scraper identifies itself; the token matches the robots.txt checks.
+const userAgent = "Mozilla/5.0 (compatible; CupProofBot/0.1)"
+
+func runScrape(ctx context.Context, log *slog.Logger) error {
+	pool, err := pgxpool.New(ctx, mustEnv("DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	runner := &scrape.Runner{
+		Q:      db.New(pool),
+		Ingest: &ingest.Service{Pool: pool},
+		Client: &shopify.Client{
+			HTTP:      &http.Client{Transport: shopify.NewTransport(), Timeout: 60 * time.Second},
+			UserAgent: userAgent,
+			PageDelay: 3 * time.Second,
+			MaxPages:  4,
+		},
+		Log: log,
+	}
+	failed, err := runner.Run(ctx, market.US)
+	if err != nil {
+		return err
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d roasters failed", failed)
+	}
+	return nil
+}
+
+func mustEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		fmt.Fprintf(os.Stderr, "%s is not set\n", key)
+		os.Exit(2)
+	}
+	return v
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// loadDotEnv sets KEY=VALUE lines from path for keys not already set.
+// Values are never logged.
+func loadDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if ok && os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
+	}
+}
