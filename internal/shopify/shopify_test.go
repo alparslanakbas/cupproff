@@ -64,6 +64,8 @@ func TestToOffersReadsTeaHouses(t *testing.T) {
 			{Title: "25 Grams Sample", Price: "9.00", Available: true},
 			{Title: "1 Cake (357 Grams)", Price: "89.00", Available: true},
 		}},
+		// UK round: a tea estate's honey, sold by weight.
+		{Title: "Cornish Honey (Estate Floral) -113g", ProductType: "Honey", Variants: []Variant{{Title: "Default Title", Price: "12.00", Available: true}}},
 	}
 	offers, skipped := ToOffers(products, Store{Kind: Tea})
 	var got []string
@@ -120,6 +122,10 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Corsica - 3oz Filter Packs", ProductType: "Coffee", Variants: []Variant{{Title: "3 oz", Price: "288.00", Available: true}}},
 		{Title: "Chai Latte Powder", ProductType: "Barista Provisions", Variants: []Variant{{Title: "3 lb", Price: "64.80", Available: true}}},
 		{Title: "Around the World Gift Box", ProductType: "Coffee", Variants: []Variant{{Title: "12 oz", Price: "60.00", Available: true}}},
+		// UK round: a roaster's hot chocolate and ceramics by type, matcha typed "Coffee".
+		{Title: "Islands 45% Hot Chocolate Powder", ProductType: "Hot Chocolate", Variants: []Variant{{Title: "1kg", Price: "22.00", Available: true}}},
+		{Title: "Sam Marks - 8oz Cup", ProductType: "Ceramics", Variants: []Variant{{Title: "8oz", Price: "28.00", Available: true}}},
+		{Title: "Matcha Powder Refill Pouch 30g", ProductType: "Coffee", Variants: []Variant{{Title: "30g", Price: "18.00", Available: true}}},
 		// Community Coffee: one unit's weight on a multi-unit pack, and creamer.
 		{Title: "Signature Blend Ground Coffee Packets 40 Count", ProductType: "Ground", Variants: []Variant{{Title: "40 Count - 2.5 oz. Packet", Price: "84.57", Available: true}}},
 		{Title: "Military Match Breakfast Blend Ground Coffee", ProductType: "Military Match", Variants: []Variant{{Title: "12 oz. | 8-pack", Price: "42.96", Available: true}}},

@@ -66,10 +66,12 @@ type Offer struct {
 // paper/travel cups ("hot cup", "cold cup"; a bare "cup" stays allowed).
 // Community Coffee lists creamer and sugar with no type or tag at all;
 // "sugar" alone can't be used ("Grandma's Sugar Cookie" is a coffee).
+// UK round (13 Oct 2026): matcha typed "Coffee" (Grind's refill pouches),
+// KeepCup/Huskee cups, Airscape canisters, milk jugs and pitchers.
 var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|kettles?|grinders?|drippers?|scales?|candles?|` +
 	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
-	`wholesale|recurring|installments?|monthly|(gift|discovery|experience) box(es)?|packs?|(travel|hot|cold|paper) cups?|` +
-	`creamers?|granulated)\b|\(ws\)`)
+	`wholesale|recurring|installments?|monthly|(gift|discovery|experience) box(es)?|packs?|(travel|hot|cold|paper|coffee|camp) cups?|` +
+	`creamers?|granulated|matcha|keepcup|huskee|airscape|jugs?|pitchers?)\b|\(ws\)`)
 
 // Deliberately absent: "variety" (Counter Culture names lots by plant
 // variety, "Finca El Puente - Gesha Variety"; 13 real coffees were lost to
@@ -93,9 +95,15 @@ var coffeePortion = regexp.MustCompile(`(?i)\b(count|ct|\d+[- ]?packs?|pack of|p
 // After the tea round: Onyx "Warehouse" (38 glasses, cups, containers),
 // "Barista Provisions" (latte powders), "Box Set"; Madcap "Supplies" (cups)
 // and "Alt Beverage" (cascara); George Howell "Cleaning"; Peace "Bundle".
+// UK round (13 Oct 2026, the roasters' own types): hot chocolate,
+// chocolate, "Drink"/"other-drinks" (Ozone sells Good & Proper teas),
+// matcha, chai, cascara, "Ceramics", "Reusable Cups", "Storage", "Tech
+// Parts", "Ancillary", "Kit"/"espresso kit", "Box", "coffee plans",
+// "wholesale coffee", and the cup and powder brands MiiR and Blendsmiths.
 var notCoffeeType = regexp.MustCompile(`(?i)\b(drinkware|gifts?|green|unroasted|merch(andise)?|apparel|equipment|` +
 	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?|teas?|goods|sundry|rtd|ready[ -]to[ -]drink|` +
-	`warehouse|supplies|provisions|box ?sets?|bundles?|cleaning|alt beverage)\b`)
+	`warehouse|supplies|provisions|box ?sets?|bundles?|cleaning|alt beverage|` +
+	`wholesale|chocolate|drinks?|matcha|chai|cascara|ceramics|cups?|storage|parts|ancillary|kits?|box|plans?|miir|blendsmiths)\b`)
 
 // White-label and wholesale-only products carry trade prices, not a price a
 // customer pays: Onyx publishes dozens tagged "white-label" with code names
@@ -122,7 +130,12 @@ const (
 // (202 of 250), so the title check carries more weight here.
 var notTeaType = regexp.MustCompile(`(?i)\b(tea ?wares?|wares|utensils|pottery|ceramics|porcelain|teapots?|cups?|bowls?|mugs?|` +
 	`table|home|candles?|incense|bath|body|accessor(y|ies)|gifts?|gift ?sets?|gift ?cards?|bundles?|variety packs?|assorted|` +
-	`merch(andise)?|apparel|subscriptions?|membership|club|events?|snacks|sparkling|concentrates?|water|wholesale|equipment)\b`)
+	`merch(andise)?|apparel|subscriptions?|membership|club|events?|snacks|sparkling|concentrates?|water|wholesale|equipment|` +
+	`honey|jam|coffee|hidden)\b`)
+
+// UK round (13 Oct 2026): Tregothnan sells honey and jam by weight, and
+// Tregothnan and Waterloo Tea list coffee; a "Hidden" type is a product the
+// store keeps off its own shelves.
 
 var notTea = regexp.MustCompile(`(?i)\b(teapots?|kettles?|infusers?|strainers?|mugs?|cups?|bowls?|whisks?|scoops?|` +
 	`candles?|incense|t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|sets?|kits?|samplers?|variety|assortment|` +
