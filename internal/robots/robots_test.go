@@ -54,3 +54,16 @@ func TestEmptyFileAllowsEverything(t *testing.T) {
 		t.Fatal("an empty robots.txt must allow everything")
 	}
 }
+
+// Shopify's default rules, as Kiss the Hippo served them on 14 Oct 2026:
+// the currency check reads the home page with query parameters, which is
+// allowed; /cart.js, the lighter alternative, is not.
+func TestShopifyDefaultsAllowTheHomePageNotTheCart(t *testing.T) {
+	r := Parse("User-agent: *\nDisallow: /cart\nDisallow: /carts\nDisallow: /search\nDisallow: /*?*oseid=*\nDisallow: /*/*?*ls=*&ls=*\n", "cupproofbot")
+	if !r.Allowed("/?country=DE&currency=EUR") {
+		t.Error("home page with country and currency must be allowed")
+	}
+	if r.Allowed("/cart.js?country=DE&currency=EUR") {
+		t.Error("/cart.js must be disallowed by Disallow: /cart")
+	}
+}

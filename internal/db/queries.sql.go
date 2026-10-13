@@ -293,6 +293,27 @@ func (q *Queries) OffersForCoffee(ctx context.Context, arg OffersForCoffeeParams
 	return items, nil
 }
 
+const presentedCurrency = `-- name: PresentedCurrency :one
+SELECT rm.currency
+FROM roaster_markets rm
+JOIN roasters r ON r.id = rm.roaster_id
+WHERE r.slug = $1 AND rm.market = $2 AND rm.checked_at > now() - make_interval(days => $3::int)
+`
+
+type PresentedCurrencyParams struct {
+	Slug       string
+	Market     string
+	MaxAgeDays int32
+}
+
+// The currency a store presented to a market, if checked recently enough.
+func (q *Queries) PresentedCurrency(ctx context.Context, arg PresentedCurrencyParams) (string, error) {
+	row := q.db.QueryRow(ctx, presentedCurrency, arg.Slug, arg.Market, arg.MaxAgeDays)
+	var currency string
+	err := row.Scan(&currency)
+	return currency, err
+}
+
 const priceHistory = `-- name: PriceHistory :many
 SELECT offer_id, seen_at, price_minor
 FROM price_points
@@ -489,6 +510,24 @@ func (q *Queries) RoasterFreshness(ctx context.Context) ([]RoasterFreshnessRow, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const savePresentedCurrency = `-- name: SavePresentedCurrency :exec
+INSERT INTO roaster_markets (roaster_id, market, currency, checked_at)
+SELECT r.id, $1, $2, now() FROM roasters r WHERE r.slug = $3
+ON CONFLICT (roaster_id, market) DO UPDATE
+SET currency = EXCLUDED.currency, checked_at = EXCLUDED.checked_at
+`
+
+type SavePresentedCurrencyParams struct {
+	Market   string
+	Currency string
+	Slug     string
+}
+
+func (q *Queries) SavePresentedCurrency(ctx context.Context, arg SavePresentedCurrencyParams) error {
+	_, err := q.db.Exec(ctx, savePresentedCurrency, arg.Market, arg.Currency, arg.Slug)
+	return err
 }
 
 const sitemapCoffees = `-- name: SitemapCoffees :many

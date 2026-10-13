@@ -205,3 +205,16 @@ ORDER BY r.slug;
 UPDATE roasters
 SET country = @country, currency = @currency, ships_to = @ships_to::text[], meta_checked_at = now()
 WHERE slug = @slug;
+
+-- The currency a store presented to a market, if checked recently enough.
+-- name: PresentedCurrency :one
+SELECT rm.currency
+FROM roaster_markets rm
+JOIN roasters r ON r.id = rm.roaster_id
+WHERE r.slug = @slug AND rm.market = @market AND rm.checked_at > now() - make_interval(days => @max_age_days::int);
+
+-- name: SavePresentedCurrency :exec
+INSERT INTO roaster_markets (roaster_id, market, currency, checked_at)
+SELECT r.id, @market, @currency, now() FROM roasters r WHERE r.slug = @slug
+ON CONFLICT (roaster_id, market) DO UPDATE
+SET currency = EXCLUDED.currency, checked_at = EXCLUDED.checked_at;

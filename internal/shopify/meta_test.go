@@ -12,29 +12,59 @@ import (
 
 var gb = market.Market{Code: "en-gb", Country: "GB", Currency: "GBP"}
 
-func TestMarketsForNeedsShippingAndCurrency(t *testing.T) {
+// A market is read when the store ships there in the market's currency,
+// checked first when it ships there in another default currency, and
+// skipped when it doesn't ship there at all.
+func TestMarketsForSortsByShippingAndCurrency(t *testing.T) {
 	cases := []struct {
-		name string
-		meta Meta
-		want []string
+		name        string
+		meta        Meta
+		read, check string
 	}{
-		{"US store shipping to the US", Meta{Currency: "USD", ShipsTo: []string{"US", "CA"}}, []string{"en-us"}},
-		{"ships to the US but sells in EUR", Meta{Currency: "EUR", ShipsTo: []string{"US", "DE"}}, nil},
-		{"does not ship to the US", Meta{Currency: "USD", ShipsTo: []string{"CA"}}, nil},
-		{"meta not read: ships nowhere", Meta{}, nil},
+		{"US store shipping to the US", Meta{Currency: "USD", ShipsTo: []string{"US", "CA"}}, "[en-us]", "[]"},
+		{"US store shipping to the UK too", Meta{Currency: "USD", ShipsTo: []string{"US", "GB"}}, "[en-us]", "[en-gb]"},
+		{"EUR store shipping to the US", Meta{Currency: "EUR", ShipsTo: []string{"US", "DE"}}, "[]", "[en-us]"},
+		{"ships to neither", Meta{Currency: "USD", ShipsTo: []string{"CA"}}, "[]", "[]"},
+		{"meta not read: ships nowhere", Meta{}, "[]", "[]"},
+	}
+	codes := func(ms []market.Market) string {
+		out := []string{}
+		for _, m := range ms {
+			out = append(out, m.Code)
+		}
+		return fmt.Sprint(out)
 	}
 	for _, c := range cases {
-		read, skipped := MarketsFor(c.meta, []market.Market{market.US, gb})
-		var got []string
-		for _, m := range read {
-			got = append(got, m.Code)
+		read, check, skipped := MarketsFor(c.meta, []market.Market{market.US, gb})
+		if codes(read) != c.read || codes(check) != c.check {
+			t.Errorf("%s: read %s check %s, want %s and %s (skipped %v)", c.name, codes(read), codes(check), c.read, c.check, skipped)
 		}
-		if fmt.Sprint(got) != fmt.Sprint(c.want) {
-			t.Errorf("%s: read %v, want %v (skipped %v)", c.name, got, c.want, skipped)
+		if len(read)+len(check)+len(skipped) != 2 {
+			t.Errorf("%s: every market must be read, checked or skipped with a reason", c.name)
 		}
-		if len(read)+len(skipped) != 2 {
-			t.Errorf("%s: every market must be read or skipped with a reason", c.name)
+	}
+}
+
+// The presented currency comes from the home page asked for the market's
+// country and currency; a page without Shopify.currency is an error, never
+// a guess.
+func TestPresentedCurrencyReadsTheHomePage(t *testing.T) {
+	page := `<script>Shopify.shop = "x.myshopify.com"; Shopify.currency = {"active":"EUR","rate":"1.207374"};</script>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" || r.URL.Query().Get("country") != "DE" || r.URL.Query().Get("currency") != "EUR" {
+			http.NotFound(w, r)
+			return
 		}
+		fmt.Fprint(w, page)
+	}))
+	defer srv.Close()
+	cur, err := newTestClient(srv, 1).PresentedCurrency(context.Background(), srv.URL, market.EU)
+	if err != nil || cur != "EUR" {
+		t.Fatalf("currency %q, err %v; want EUR", cur, err)
+	}
+	page = `<html>no storefront script</html>`
+	if cur, err := newTestClient(srv, 1).PresentedCurrency(context.Background(), srv.URL, market.EU); err == nil {
+		t.Fatalf("a page without Shopify.currency gave %q, want an error", cur)
 	}
 }
 

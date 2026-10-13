@@ -69,3 +69,10 @@ type Roaster struct {
 	Kind             string
 	VariantMustMatch *string
 }
+
+type RoasterMarket struct {
+	RoasterID int64
+	Market    string
+	Currency  string
+	CheckedAt pgtype.Timestamptz
+}
