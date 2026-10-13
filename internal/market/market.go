@@ -18,8 +18,13 @@ type Market struct {
 // US is the first market.
 var US = Market{Code: "en-us", Lang: "en-US", Country: "US", Currency: "USD", Name: "United States"}
 
+// UK is read from UK roasters and tea houses only: a store is read for a
+// market when it ships there in that market's currency (shopify.MarketsFor),
+// and the US stores that ship to the UK sell there in USD.
+var UK = Market{Code: "en-gb", Lang: "en-GB", Country: "GB", Currency: "GBP", Name: "United Kingdom"}
+
 // All lists the live markets, in the order the region selector shows them.
-var All = []Market{US}
+var All = []Market{US, UK}
 
 // ByCode finds a live market by its URL segment.
 func ByCode(code string) (Market, bool) {
