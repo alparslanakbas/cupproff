@@ -1,0 +1,7 @@
+# The server keeps .env (database password) in the checkout's directory; it
+# must never reach the build context, not even the build stage's cache.
+.env
+.git
+.claude
+CLAUDE.md
+bin
