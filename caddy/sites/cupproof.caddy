@@ -1,0 +1,36 @@
+# CupProof's hosts, for the Turkish stack's Caddy on the same VM, the way
+# WheyProof's are: that Caddyfile imports site files from a mounted
+# directory, and its global options (Cloudflare's trusted_proxies) apply
+# here too.
+#
+# NOT MOUNTED YET. Until the domain is bought, Caddy would only fail to get
+# certificates for these names. On the day: mount this directory in the
+# Turkish compose file, add the import, run `caddy validate`, deploy.
+#
+# The upstream is the network alias the site container gets on "web-edge"
+# (scripts/deploy.sh). A broken file here takes every site of that Caddy
+# down on its next restart: validate before deploying.
+
+(cupproof-access-log) {
+	log {
+		# Its own file; no tokens in our URLs (no accounts), so nothing to mask.
+		output file /var/log/caddy/cupproof-access.log {
+			roll_size 20MiB
+			roll_keep 50
+			roll_keep_for 2160h
+		}
+		format json
+	}
+}
+
+www.cupproof.com {
+	import cupproof-access-log
+	encode zstd gzip
+	reverse_proxy cupproof-web:8080
+}
+
+# One canonical host, as on the sister sites.
+cupproof.com {
+	import cupproof-access-log
+	redir https://www.cupproof.com{uri} permanent
+}
