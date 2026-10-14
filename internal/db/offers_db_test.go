@@ -126,3 +126,29 @@ func TestOffersForCoffeeAppliesTheGapRuleAndTracking(t *testing.T) {
 		t.Error("tracked offer: want 'lowest since' after 40 days at a higher price")
 	}
 }
+
+// One Shopify shop on two domains (Has Bean and Ozone, 13 Oct 2026) must
+// not be stored twice: the second domain's meta update fails.
+func TestSameShopOnTwoDomainsIsRefused(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	q := db.New(pool)
+	meta := func(slug string) error {
+		return q.UpdateRoasterMeta(ctx, db.UpdateRoasterMetaParams{Slug: slug, ShipsTo: []string{"GB"}, ShopID: 231572})
+	}
+	if err := meta("ozone"); err != nil { // seeded by migration 00008
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "INSERT INTO roasters (slug, name, base_url) VALUES ('hasbean', 'Has Bean', 'https://hasbean.co.uk')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := meta("hasbean"); err == nil || !strings.Contains(err.Error(), "roasters_shop_id_key") {
+		t.Fatalf("second domain of the same shop: err %v, want the roasters_shop_id_key violation", err)
+	}
+	// A meta.json without an id stores NULL, and NULLs never collide.
+	for _, slug := range []string{"perc", "onyx"} {
+		if err := q.UpdateRoasterMeta(ctx, db.UpdateRoasterMetaParams{Slug: slug, ShipsTo: []string{"US"}}); err != nil {
+			t.Fatalf("%s without a shop id: %v", slug, err)
+		}
+	}
+}

@@ -572,14 +572,16 @@ func (q *Queries) SitemapCoffees(ctx context.Context, market string) ([]SitemapC
 
 const updateRoasterMeta = `-- name: UpdateRoasterMeta :exec
 UPDATE roasters
-SET country = $1, currency = $2, ships_to = $3::text[], meta_checked_at = now()
-WHERE slug = $4
+SET country = $1, currency = $2, ships_to = $3::text[], meta_checked_at = now(),
+    shop_id = nullif($4::bigint, 0)
+WHERE slug = $5
 `
 
 type UpdateRoasterMetaParams struct {
 	Country  *string
 	Currency *string
 	ShipsTo  []string
+	ShopID   int64
 	Slug     string
 }
 
@@ -588,6 +590,7 @@ func (q *Queries) UpdateRoasterMeta(ctx context.Context, arg UpdateRoasterMetaPa
 		arg.Country,
 		arg.Currency,
 		arg.ShipsTo,
+		arg.ShopID,
 		arg.Slug,
 	)
 	return err

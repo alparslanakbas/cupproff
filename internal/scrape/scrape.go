@@ -103,6 +103,7 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 	}
 	if err := r.Q.UpdateRoasterMeta(ctx, db.UpdateRoasterMetaParams{
 		Slug: slug, Country: nonEmpty(meta.Country), Currency: nonEmpty(meta.Currency), ShipsTo: meta.ShipsTo,
+		ShopID: meta.ID,
 	}); err != nil {
 		return err
 	}

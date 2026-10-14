@@ -15,6 +15,7 @@ import (
 
 // Meta is what a Shopify store says about itself in /meta.json.
 type Meta struct {
+	ID       int64    `json:"id"` // the shop's id: the same for every domain it answers on
 	Name     string   `json:"name"`
 	Country  string   `json:"country"`
 	Currency string   `json:"currency"`

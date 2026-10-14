@@ -68,6 +68,7 @@ type Roaster struct {
 	MetaCheckedAt    pgtype.Timestamptz
 	Kind             string
 	VariantMustMatch *string
+	ShopID           *int64
 }
 
 type RoasterMarket struct {

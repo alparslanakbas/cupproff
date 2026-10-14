@@ -203,7 +203,8 @@ ORDER BY r.slug;
 
 -- name: UpdateRoasterMeta :exec
 UPDATE roasters
-SET country = @country, currency = @currency, ships_to = @ships_to::text[], meta_checked_at = now()
+SET country = @country, currency = @currency, ships_to = @ships_to::text[], meta_checked_at = now(),
+    shop_id = nullif(@shop_id::bigint, 0)
 WHERE slug = @slug;
 
 -- The currency a store presented to a market, if checked recently enough.
