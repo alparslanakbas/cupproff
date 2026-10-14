@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -37,6 +38,9 @@ type Server struct {
 
 // Handler returns the site's routes.
 func (s *Server) Handler() http.Handler {
+	// Go's built-in table has no .woff2, and the distroless image has no
+	// system MIME table to fall back on.
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
 	static, _ := fs.Sub(staticFiles, "static")
 	files := http.FileServerFS(static)
 	if css, err := fs.ReadFile(static, "site.css"); err == nil {
@@ -68,9 +72,25 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var links []views.MarketLink
 	for _, m := range market.All {
-		links = append(links, views.MarketLink{Name: m.Name, URL: "/" + m.Code + "/"})
+		link := views.MarketLink{Name: m.Name, URL: "/" + m.Code + "/", Note: m.Hint}
+		var err error
+		if link.Coffees, err = s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: coffeeKind.name}); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if link.Teas, err = s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: teaKind.name}); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		links = append(links, link)
+	}
+	stores, err := s.Q.RoasterFreshness(ctx) // one row per active store
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	p := views.Page{
 		Title: "CupProof — coffee and tea price history from independent sellers", Lang: "en",
@@ -85,7 +105,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + "/"})
-	s.render(w, r, http.StatusOK, views.Home(p, links))
+	s.render(w, r, http.StatusOK, views.Home(p, len(stores), links))
 }
 
 // inMarkets fills in what every page of a market shares: hreflang
@@ -237,7 +257,7 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 			card.LowestIn30 = sum.LowestIn30Days()
 		}
 		if c.ImageUrl != nil {
-			card.ImageURL = cdnImage(*c.ImageUrl, 480)
+			card.ImageURL = cdnImage(*c.ImageUrl, 160) // an 80 px thumbnail, sharp on 2x screens
 		}
 		if c.CompareAtMinor != nil {
 			card.StoreWas = money(*c.CompareAtMinor, c.Currency)
@@ -283,7 +303,15 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		xDefault = "/"
 	}
 	p = s.inMarkets(p, m, k, paths, xDefault)
-	s.render(w, r, http.StatusOK, views.MarketHome(p, fmt.Sprintf(k.heading, m.Name), fmt.Sprintf(k.lede, total), cards, pg))
+	// The rows come ordered by store; each store is one group on the page.
+	var groups []views.Group
+	for _, c := range cards {
+		if len(groups) == 0 || groups[len(groups)-1].Store != c.Roaster {
+			groups = append(groups, views.Group{Store: c.Roaster})
+		}
+		groups[len(groups)-1].Cards = append(groups[len(groups)-1].Cards, c)
+	}
+	s.render(w, r, http.StatusOK, views.MarketHome(p, fmt.Sprintf(k.heading, m.Name), fmt.Sprintf(k.lede, total), groups, pg))
 }
 
 // pageSize is the number of products per listing page.
@@ -368,7 +396,14 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		}
 		if pts := history[o.ID]; len(pts) > 0 {
 			ov.Since = pts[0].At.UTC().Format("Jan 2, 2006")
-			ov.Chart = sparkline(pts, now, 120, 32, fmt.Sprintf("%s price since %s", o.SizeLabel, ov.Since))
+			// Wide and flat, like a roast curve: the page's CSS scales it to
+			// the column, the viewBox keeps the proportions.
+			ov.Chart = sparkline(pts, now, 640, 96, fmt.Sprintf("%s price since %s", o.SizeLabel, ov.Since))
+			hi, lo := pts[0].Minor, pts[0].Minor
+			for _, p := range pts {
+				hi, lo = max(hi, p.Minor), min(lo, p.Minor)
+			}
+			ov.High, ov.Low = money(hi, o.Currency), money(lo, o.Currency)
 		}
 		view.Offers = append(view.Offers, ov)
 		availability := "https://schema.org/OutOfStock"

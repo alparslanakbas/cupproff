@@ -181,7 +181,7 @@ FROM (
     WHERE s.latest_available AND r.kind = $2
     ORDER BY c.id, o.weight_grams
 ) x
-ORDER BY x.title, x.slug
+ORDER BY x.roaster_name, x.title, x.slug
 LIMIT $4 OFFSET $3
 `
 
@@ -213,6 +213,8 @@ type ListCoffeesRow struct {
 // 2026: SEY 9 of 669 coffees in stock, Onyx 167 of 527), and a listing of
 // sold-out coffees is useless to a buyer. Offers not seen for 48 hours are
 // stale and never shown. Verdict figures come from offer_summaries.
+// Grouped by store, like a café menu lists its producers; the page shows a
+// store's name once above its products.
 func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]ListCoffeesRow, error) {
 	rows, err := q.db.Query(ctx, listCoffees,
 		arg.Market,

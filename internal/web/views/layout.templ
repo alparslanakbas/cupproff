@@ -1,5 +1,7 @@
 package views
 
+import "fmt"
+
 // Page is what every page tells the layout about itself.
 type Page struct {
 	Title       string
@@ -53,6 +55,9 @@ templ Layout(p Page) {
 			for _, a := range p.Alternates {
 				<link rel="alternate" hreflang={ a.Lang } href={ templ.SafeURL(a.URL) }/>
 			}
+			<meta name="color-scheme" content="light dark"/>
+			<link rel="preload" href="/static/fraunces.woff2" as="font" type="font/woff2" crossorigin/>
+			<link rel="preload" href="/static/plex-sans.woff2" as="font" type="font/woff2" crossorigin/>
 			<link rel="stylesheet" href={ StylesheetURL }/>
 			if p.JSONLD != "" {
 				@templ.Raw(`<script type="application/ld+json">` + p.JSONLD + `</script>`)
@@ -60,40 +65,53 @@ templ Layout(p Page) {
 		</head>
 		<body>
 			<header class="site-header">
-				<a class="brand" href="/">CupProof</a>
-				<span class="tagline">Coffee and tea prices, with receipts</span>
-				if len(p.Nav) > 0 {
-					<nav class="sections" aria-label="Sections">
-						for _, n := range p.Nav {
-							if n.Current {
-								<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
-							} else {
-								<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+				<div class="wrap header-row">
+					<a class="brand" href="/">CupProof</a>
+					if len(p.Nav) > 0 {
+						<nav class="sections" aria-label="Sections">
+							for _, n := range p.Nav {
+								if n.Current {
+									<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+								} else {
+									<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+								}
 							}
-						}
-					</nav>
-				}
-				if len(p.Regions) > 0 {
-					<nav class="regions" aria-label="Region">
-						for _, n := range p.Regions {
-							if n.Current {
-								<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
-							} else {
-								<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+						</nav>
+					}
+					if len(p.Regions) > 0 {
+						<nav class="regions" aria-label="Region">
+							for _, n := range p.Regions {
+								if n.Current {
+									<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+								} else {
+									<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+								}
 							}
-						}
-					</nav>
-				}
+						</nav>
+					}
+				</div>
 			</header>
 			<main class="wrap">
 				{ children... }
 			</main>
 			<footer class="site-footer">
-				if p.MarketNote != "" {
-					<p class="market-note">{ p.MarketNote }</p>
-				}
-				<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A "real drop" is measured against the price seen on at least 7 days of the last 30, not against the store's own "was" price.</p>
+				<div class="wrap">
+					if p.MarketNote != "" {
+						<p class="market-note">{ p.MarketNote }</p>
+					}
+					<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a bag sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
+					<p>CupProof is independent. Every link goes to the store's own page.</p>
+				</div>
 			</footer>
 		</body>
 	</html>
+}
+
+// count writes "2,956 teas": thousands grouped, the way the stores write prices.
+func count(n int64, noun string) string {
+	s := fmt.Sprint(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s + " " + noun
 }

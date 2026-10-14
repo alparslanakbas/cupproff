@@ -21,6 +21,8 @@ type Market struct {
 	// Note says what a buyer must know about these prices, on every page of
 	// the market; "" when nothing beyond the site-wide notes.
 	Note string
+	// Hint is the short form of Note for the region chooser.
+	Hint string
 }
 
 // US is the first market.
@@ -41,7 +43,8 @@ var UK = Market{Code: "en-gb", Lang: "en-GB", Country: "GB", Currency: "GBP", Na
 var EU = Market{Code: "en-eu", Lang: "en", Country: "DE", Currency: "EUR", Name: "European Union", Short: "EU",
 	Hreflangs: []string{"en-DE", "en-AT", "en-BE", "en-NL", "en-LU", "en-FR", "en-IE", "en-IT", "en-ES", "en-PT",
 		"en-FI", "en-EE", "en-LV", "en-LT", "en-SK", "en-SI", "en-GR", "en-CY", "en-MT", "en-HR", "en-BG"},
-	Note: "Prices are the ones each store shows a buyer in Germany; with VAT they can differ in other EU countries."}
+	Note: "Prices are the ones each store shows a buyer in Germany; with VAT they can differ in other EU countries.",
+	Hint: "Prices as shown in Germany"}
 
 // All lists the live markets, in the order the region selector shows them.
 var All = []Market{US, UK, EU}

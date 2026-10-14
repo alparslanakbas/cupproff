@@ -55,7 +55,9 @@ FROM (
     WHERE s.latest_available AND r.kind = @kind
     ORDER BY c.id, o.weight_grams
 ) x
-ORDER BY x.title, x.slug
+-- Grouped by store, like a café menu lists its producers; the page shows a
+-- store's name once above its products.
+ORDER BY x.roaster_name, x.title, x.slug
 LIMIT @page_size OFFSET @skip;
 
 -- name: CountCoffees :one
