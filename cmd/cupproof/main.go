@@ -127,6 +127,9 @@ func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
 			HTTP:      &http.Client{Transport: shopify.NewTransport(), Timeout: 60 * time.Second},
 			UserAgent: userAgent,
 			PageDelay: 3 * time.Second,
+			// A 5xx gets one retry after this pause (14 Oct 2026: three 503s
+			// in a minute, each cost a store its day).
+			ServerRetryDelay: 15 * time.Second,
 			// Yunnan Sourcing hit the first cap of 4 pages (1,000 products) on
 			// 13 Oct 2026; 20 pages is 5,000 products, one minute at 3 s a page.
 			MaxPages: 20,

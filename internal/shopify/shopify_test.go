@@ -323,3 +323,28 @@ func TestFetchProductsFlagsTheCap(t *testing.T) {
 		t.Fatalf("products=%d err=%v; want both pages and ErrPageCap", len(products), err)
 	}
 }
+
+// A 5xx is retried once and the second answer is used; a 429 is not
+// retried (the scrape breaker decides about refusals).
+func TestGetRetriesAServerErrorOnceButNotARefusal(t *testing.T) {
+	var calls int
+	status := http.StatusServiceUnavailable
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(status)
+			return
+		}
+		fmt.Fprint(w, "ok")
+	}))
+	defer srv.Close()
+	c := newTestClient(srv, 1)
+	body, err := c.Get(context.Background(), srv.URL+"/robots.txt", 1024)
+	if err != nil || string(body) != "ok" || calls != 2 {
+		t.Fatalf("503 then ok: body %q, err %v, calls %d; want one retry", body, err, calls)
+	}
+	calls, status = 0, http.StatusTooManyRequests
+	if _, err := c.Get(context.Background(), srv.URL+"/products.json", 1024); !errors.Is(err, ErrRateLimited) || calls != 1 {
+		t.Fatalf("429: err %v, calls %d; want ErrRateLimited without a retry", err, calls)
+	}
+}

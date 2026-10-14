@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
@@ -58,7 +56,7 @@ var activeCurrency = regexp.MustCompile(`Shopify\.currency\s*=\s*\{\s*"active"\s
 // 13-14 Oct 2026: Kiss the Hippo EUR (rate 1.207 from GBP), Klatch USD.
 // A home page can weigh 1.5 MB, which is why the answer is kept for a week.
 func (c *Client) PresentedCurrency(ctx context.Context, baseURL string, m market.Market) (string, error) {
-	body, err := c.get(ctx, baseURL+HomePath(m), 4<<20)
+	body, err := c.Get(ctx, baseURL+HomePath(m), 4<<20)
 	if err != nil {
 		return "", fmt.Errorf("home page: %w", err)
 	}
@@ -71,37 +69,11 @@ func (c *Client) PresentedCurrency(ctx context.Context, baseURL string, m market
 
 // getJSON reads a small JSON document from a store.
 func (c *Client) getJSON(ctx context.Context, u string, v any) error {
-	body, err := c.get(ctx, u, 1<<20)
+	body, err := c.Get(ctx, u, 1<<20)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(body, v)
-}
-
-// get reads up to limit bytes from a store, mapping refusals to the
-// package's errors so the scrape breaker can count them.
-func (c *Client) get(ctx context.Context, u string, limit int64) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", c.UserAgent)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return nil, ErrNotShopify
-	case resp.StatusCode == http.StatusTooManyRequests:
-		return nil, ErrRateLimited
-	case resp.StatusCode == http.StatusForbidden && resp.Header.Get("Cf-Mitigated") != "":
-		return nil, ErrChallenged
-	case resp.StatusCode != http.StatusOK:
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	return io.ReadAll(io.LimitReader(resp.Body, limit))
 }
 
 // MarketsFor sorts the markets for a store: read now (it ships there and

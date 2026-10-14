@@ -51,6 +51,8 @@ type Client struct {
 	UserAgent string
 	PageDelay time.Duration
 	MaxPages  int
+	// ServerRetryDelay is the pause before the one retry a 5xx answer gets.
+	ServerRetryDelay time.Duration
 }
 
 // FetchProducts reads every catalog page of a store as a customer of m.
@@ -90,29 +92,55 @@ func (c *Client) FetchProducts(ctx context.Context, baseURL string, m market.Mar
 }
 
 func (c *Client) fetchPage(ctx context.Context, pageURL string) ([]Product, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", c.UserAgent)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return nil, ErrNotShopify
-	case resp.StatusCode == http.StatusTooManyRequests:
-		return nil, ErrRateLimited
-	case resp.StatusCode == http.StatusForbidden && resp.Header.Get("Cf-Mitigated") != "":
-		return nil, ErrChallenged
-	case resp.StatusCode != http.StatusOK:
-		return nil, fmt.Errorf("%s: HTTP %d", pageURL, resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	body, err := c.Get(ctx, pageURL, 64<<20)
 	if err != nil {
 		return nil, err
 	}
 	return DecodeProducts(body)
+}
+
+// Get reads up to limit bytes from a store. Refusals map to the package's
+// errors (the scrape breaker counts them), a 404 to ErrNotShopify.
+//
+// A 5xx answer is retried once after ServerRetryDelay: on 14 Oct 2026 three
+// stores (200 Degrees' robots.txt, Artisan Roast, page 2 of Black Rifle)
+// answered 503 within a minute of each other, and each lost its whole day.
+// A 429 is never retried here; the breaker decides about refusals.
+func (c *Client) Get(ctx context.Context, u string, limit int64) ([]byte, error) {
+	body, status, err := c.getOnce(ctx, u, limit)
+	if status < 500 {
+		return body, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(c.ServerRetryDelay):
+	}
+	body, _, err = c.getOnce(ctx, u, limit)
+	return body, err
+}
+
+func (c *Client) getOnce(ctx context.Context, u string, limit int64) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("User-Agent", c.UserAgent)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, resp.StatusCode, ErrNotShopify
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, resp.StatusCode, ErrRateLimited
+	case resp.StatusCode == http.StatusForbidden && resp.Header.Get("Cf-Mitigated") != "":
+		return nil, resp.StatusCode, ErrChallenged
+	case resp.StatusCode != http.StatusOK:
+		return nil, resp.StatusCode, fmt.Errorf("%s: HTTP %d", u, resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	return body, resp.StatusCode, err
 }

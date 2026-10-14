@@ -6,9 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"slices"
 	"time"
 
@@ -183,33 +181,13 @@ func nonEmpty(s string) *string {
 
 // A missing robots.txt (404) allows everything; any other failure is an
 // error, because "couldn't check" is not the same as "allowed".
+// It goes through the client like every store request: refusals map to the
+// errors the breaker counts, and a 5xx gets its one retry.
 func (r *Runner) robots(ctx context.Context, baseURL string) (robots.Rules, error) {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/robots.txt", nil)
-	if err != nil {
-		return robots.Rules{}, err
-	}
-	req.Header.Set("User-Agent", r.Client.UserAgent)
-	resp, err := r.Client.HTTP.Do(req)
-	if err != nil {
-		return robots.Rules{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
+	body, err := r.Client.Get(ctx, baseURL+"/robots.txt", 512<<10)
+	if errors.Is(err, shopify.ErrNotShopify) { // 404: no robots.txt
 		return robots.Rules{}, nil
 	}
-	// The same refusals as on the catalog, so the breaker counts them.
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return robots.Rules{}, shopify.ErrRateLimited
-	}
-	if resp.StatusCode == http.StatusForbidden && resp.Header.Get("Cf-Mitigated") != "" {
-		return robots.Rules{}, shopify.ErrChallenged
-	}
-	if resp.StatusCode != http.StatusOK {
-		return robots.Rules{}, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
 	if err != nil {
 		return robots.Rules{}, err
 	}
