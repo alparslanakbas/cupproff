@@ -38,6 +38,11 @@ h1 { font: 500 2rem/1.2 var(--font-display); margin: 0 0 .5rem; }
 .sections a { padding: .3rem .8rem; border: 1px solid transparent; border-radius: 999px; color: var(--text); text-decoration: none; }
 .sections a:hover { border-color: var(--border); }
 .sections a[aria-current="page"] { background: var(--surface); border-color: var(--border); color: var(--accent); font-weight: 600; }
+.regions { display: flex; gap: .15rem; }
+.regions a { padding: .2rem .5rem; border-radius: 6px; font-size: .85rem; color: var(--muted); text-decoration: none; }
+.regions a:hover { color: var(--text); }
+.regions a[aria-current="page"] { color: var(--text); background: var(--surface); border: 1px solid var(--border); }
+.market-note { color: var(--text); }
 .brand { font: 500 1.4rem var(--font-display); color: var(--text); text-decoration: none; }
 .tagline, .muted { color: var(--muted); }
 .small { font-size: .85rem; }

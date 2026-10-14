@@ -77,7 +77,39 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		Description: "Compare specialty coffee and tea prices from independent roasters and tea houses, and see whether a sale is a real price drop.",
 		Canonical:   s.SiteURL + "/",
 	}
+	// The region chooser is every market's x-default: searchers outside the
+	// listed regions land where they can pick one.
+	for _, m := range market.All {
+		for _, h := range m.Hreflangs {
+			p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + "/" + m.Code + "/"})
+		}
+	}
+	p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + "/"})
 	s.render(w, r, http.StatusOK, views.Home(p, links))
+}
+
+// inMarkets fills in what every page of a market shares: hreflang
+// alternates to the same page in the markets where it exists (paths, by
+// market code), region links (to the same page where it exists, otherwise
+// to that market's listing of the section) and the market's note. xDefault
+// is a path, or "" for none.
+func (s *Server) inMarkets(p views.Page, current market.Market, k kind, paths map[string]string, xDefault string) views.Page {
+	for _, m := range market.All {
+		path, ok := paths[m.Code]
+		if ok {
+			for _, h := range m.Hreflangs {
+				p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + path})
+			}
+		} else {
+			path = "/" + m.Code + "/" + k.listPath
+		}
+		p.Regions = append(p.Regions, views.NavLink{Name: m.Short, URL: path, Current: m.Code == current.Code})
+	}
+	if xDefault != "" {
+		p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + xDefault})
+	}
+	p.MarketNote = current.Note
+	return p
 }
 
 // kind is what differs between the coffee and the tea sections. A store
@@ -236,9 +268,21 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 	p := views.Page{
 		Title: title + " — CupProof", Lang: m.Lang,
 		Description: fmt.Sprintf(k.desc, total),
-		Canonical:   url, Alternates: []views.Alternate{{Lang: m.Lang, URL: url}, {Lang: "x-default", URL: url}},
-		Nav: nav(m, k.name),
+		Canonical:   url,
+		Nav:         nav(m, k.name),
 	}
+	// Page 1 of a listing has a sibling in every market. Page N does not:
+	// the third page of US coffees and of UK coffees list different coffees,
+	// so a later page names only itself.
+	paths := map[string]string{m.Code: pageURL(page)}
+	xDefault := ""
+	if page == 1 {
+		for _, other := range market.All {
+			paths[other.Code] = "/" + other.Code + "/" + k.listPath
+		}
+		xDefault = "/"
+	}
+	p = s.inMarkets(p, m, k, paths, xDefault)
 	s.render(w, r, http.StatusOK, views.MarketHome(p, fmt.Sprintf(k.heading, m.Name), fmt.Sprintf(k.lede, total), cards, pg))
 }
 
@@ -351,11 +395,23 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 	p := views.Page{
 		Title: c.Title + " by " + c.RoasterName + " — price history — CupProof", Lang: m.Lang,
 		Description: fmt.Sprintf("%s by %s: today's price for every size and whether it is a real price drop.", c.Title, c.RoasterName),
-		Canonical:   url, Alternates: []views.Alternate{{Lang: m.Lang, URL: url}, {Lang: "x-default", URL: url}},
-		JSONLD:  string(ldJSON),
-		NoIndex: !inStockRecently,
-		Nav:     nav(m, k.name),
+		Canonical:   url,
+		JSONLD:      string(ldJSON),
+		NoIndex:     !inStockRecently,
+		Nav:         nav(m, k.name),
 	}
+	// The same coffee's page in the other markets where it is sold now; the
+	// US page, when there is one, is the fallback for everyone else.
+	codes, err := s.Q.CoffeeMarkets(r.Context(), c.ID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	paths := map[string]string{}
+	for _, code := range codes {
+		paths[code] = "/" + code + "/" + k.segment + "/" + c.Slug
+	}
+	p = s.inMarkets(p, m, k, paths, paths[market.US.Code])
 	s.render(w, r, http.StatusOK, views.CoffeePage(p, view))
 }
 

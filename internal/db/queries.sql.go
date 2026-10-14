@@ -48,6 +48,34 @@ func (q *Queries) CoffeeBySlug(ctx context.Context, slug string) (CoffeeBySlugRo
 	return i, err
 }
 
+const coffeeMarkets = `-- name: CoffeeMarkets :many
+SELECT DISTINCT market FROM offers
+WHERE coffee_id = $1 AND last_seen_at > now() - interval '48 hours'
+ORDER BY market
+`
+
+// The markets where a coffee has a current offer: its page exists there, so
+// its pages point at each other (hreflang) and the header links them.
+func (q *Queries) CoffeeMarkets(ctx context.Context, coffeeID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, coffeeMarkets, coffeeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var market string
+		if err := rows.Scan(&market); err != nil {
+			return nil, err
+		}
+		items = append(items, market)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countCoffees = `-- name: CountCoffees :one
 SELECT count(DISTINCT o.coffee_id)
 FROM offers o

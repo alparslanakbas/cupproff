@@ -219,3 +219,10 @@ INSERT INTO roaster_markets (roaster_id, market, currency, checked_at)
 SELECT r.id, @market, @currency, now() FROM roasters r WHERE r.slug = @slug
 ON CONFLICT (roaster_id, market) DO UPDATE
 SET currency = EXCLUDED.currency, checked_at = EXCLUDED.checked_at;
+
+-- The markets where a coffee has a current offer: its page exists there, so
+-- its pages point at each other (hreflang) and the header links them.
+-- name: CoffeeMarkets :many
+SELECT DISTINCT market FROM offers
+WHERE coffee_id = $1 AND last_seen_at > now() - interval '48 hours'
+ORDER BY market;

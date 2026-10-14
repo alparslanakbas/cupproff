@@ -10,6 +10,8 @@ type Page struct {
 	JSONLD      string // already marshalled with HTML escaping
 	NoIndex     bool
 	Nav         []NavLink // the market's sections; empty outside a market
+	Regions     []NavLink // the same page in the other markets, when it exists there
+	MarketNote  string    // what a buyer must know about this market's prices
 }
 
 // NavLink is one section of a market (Coffee, Tea) in the header.
@@ -71,12 +73,26 @@ templ Layout(p Page) {
 						}
 					</nav>
 				}
+				if len(p.Regions) > 0 {
+					<nav class="regions" aria-label="Region">
+						for _, n := range p.Regions {
+							if n.Current {
+								<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+							} else {
+								<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+							}
+						}
+					</nav>
+				}
 			</header>
 			<main class="wrap">
 				{ children... }
 			</main>
 			<footer class="site-footer">
-				<p>Prices are the ones each store shows to your country, read daily. A "real drop" is measured against the price seen on at least 7 days of the last 30, not against the store's own "was" price.</p>
+				if p.MarketNote != "" {
+					<p class="market-note">{ p.MarketNote }</p>
+				}
+				<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A "real drop" is measured against the price seen on at least 7 days of the last 30, not against the store's own "was" price.</p>
 			</footer>
 		</body>
 	</html>
