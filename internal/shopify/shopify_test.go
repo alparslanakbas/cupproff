@@ -126,6 +126,10 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Islands 45% Hot Chocolate Powder", ProductType: "Hot Chocolate", Variants: []Variant{{Title: "1kg", Price: "22.00", Available: true}}},
 		{Title: "Sam Marks - 8oz Cup", ProductType: "Ceramics", Variants: []Variant{{Title: "8oz", Price: "28.00", Available: true}}},
 		{Title: "Matcha Powder Refill Pouch 30g", ProductType: "Coffee", Variants: []Variant{{Title: "30g", Price: "18.00", Available: true}}},
+		// EU round: a German subscription, a Spanish one by type, a filter basket ("Sieb").
+		{Title: "Copacabana - Classic Espresso Abo 12 Monate", ProductType: "Espresso", Variants: []Variant{{Title: "250g", Price: "150.00", Available: true}}},
+		{Title: "Suscripción 'Essentials' Espresso", ProductType: "Suscripción", Variants: []Variant{{Title: "250g", Price: "13.00", Available: true}}},
+		{Title: "VST SIEB RIDGED", Variants: []Variant{{Title: "18g", Price: "35.00", Available: true}}},
 		// Community Coffee: one unit's weight on a multi-unit pack, and creamer.
 		{Title: "Signature Blend Ground Coffee Packets 40 Count", ProductType: "Ground", Variants: []Variant{{Title: "40 Count - 2.5 oz. Packet", Price: "84.57", Available: true}}},
 		{Title: "Military Match Breakfast Blend Ground Coffee", ProductType: "Military Match", Variants: []Variant{{Title: "12 oz. | 8-pack", Price: "42.96", Available: true}}},
@@ -170,7 +174,8 @@ func TestToOffersFoldsGrindIntoSizeAndKeepsCheapestAvailable(t *testing.T) {
 // Real coffees whose names look like filtered words (13 Oct 2026): a plant
 // variety, a single coffee sold in a box, a flavour named after sugar.
 func TestToOffersKeepsCoffeesThatOnlySoundLikeLeaks(t *testing.T) {
-	titles := []string{"Finca El Puente - Gesha Variety", "Colombia La Riviera Gesha Box", "Grandma's Sugar Cookie Ground Coffee", "Cup of Excellence Colombia"}
+	titles := []string{"Finca El Puente - Gesha Variety", "Colombia La Riviera Gesha Box", "Grandma's Sugar Cookie Ground Coffee", "Cup of Excellence Colombia",
+		"Fellow Berry Spice", "Ají Fellows Farms"}
 	var products []Product
 	for _, title := range titles {
 		products = append(products, Product{Title: title, ProductType: "Coffee", Variants: []Variant{{Title: "12 oz", Price: "20.00", Available: true}}})

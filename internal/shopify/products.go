@@ -71,7 +71,15 @@ type Offer struct {
 var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|kettles?|grinders?|drippers?|scales?|candles?|` +
 	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
 	`wholesale|recurring|installments?|monthly|(gift|discovery|experience) box(es)?|packs?|(travel|hot|cold|paper|coffee|camp) cups?|` +
-	`creamers?|granulated|matcha|keepcup|huskee|airscape|jugs?|pitchers?)\b|\(ws\)`)
+	`creamers?|granulated|matcha|keepcup|huskee|airscape|jugs?|pitchers?|` +
+	// EU round (14 Oct 2026; stores write in German, French, Spanish, Finnish):
+	// subscriptions ("Abo 12 Monate", Finnish "vakiotilaus"), a public cupping
+	// event, gear sold by brand or by French name (moulin = grinder), VST
+	// filter baskets, canisters, bundles and drip bags.
+	// "fellow" is deliberately absent: Methodical sells real coffees named for
+	// the brand ("Fellow Berry Spice"); Fellow's Atmos canister is caught by "atmos".
+	`abo|abonnement|vakiotilaus|cupping|moulin|comandante|delonghi|moccamaster|aarke|atmos|canisters?|` +
+	`vst|baskets?|bundles?|drip ?bags?)\b|\(ws\)`)
 
 // Deliberately absent: "variety" (Counter Culture names lots by plant
 // variety, "Finca El Puente - Gesha Variety"; 13 real coffees were lost to
@@ -103,7 +111,11 @@ var coffeePortion = regexp.MustCompile(`(?i)\b(count|ct|\d+[- ]?packs?|pack of|p
 var notCoffeeType = regexp.MustCompile(`(?i)\b(drinkware|gifts?|green|unroasted|merch(andise)?|apparel|equipment|` +
 	`accessor(y|ies)|brewing|gear|subscriptions?|gift ?cards?|teas?|goods|sundry|rtd|ready[ -]to[ -]drink|` +
 	`warehouse|supplies|provisions|box ?sets?|bundles?|cleaning|alt beverage|` +
-	`wholesale|chocolate|drinks?|matcha|chai|cascara|ceramics|cups?|storage|parts|ancillary|kits?|box|plans?|miir|blendsmiths)\b`)
+	`wholesale|chocolate|drinks?|matcha|chai|cascara|ceramics|cups?|storage|parts|ancillary|kits?|box|plans?|miir|blendsmiths|` +
+	// EU round (14 Oct 2026): "Coffee Club" (subscription), "Training", "Hats",
+	// French "Matériel", "Barista Tools", "Merchandising", Spanish
+	// "Suscripción" and "Limpiador" (cleaner), The Barn's "Misc".
+	`club|training|hats?|caps?|mat[ée]riel|tools?|merchandising|suscripci[oó]n|limpiador|misc)\b`)
 
 // White-label and wholesale-only products carry trade prices, not a price a
 // customer pays: Onyx publishes dozens tagged "white-label" with code names
@@ -131,7 +143,7 @@ const (
 var notTeaType = regexp.MustCompile(`(?i)\b(tea ?wares?|wares|utensils|pottery|ceramics|porcelain|teapots?|cups?|bowls?|mugs?|` +
 	`table|home|candles?|incense|bath|body|accessor(y|ies)|gifts?|gift ?sets?|gift ?cards?|bundles?|variety packs?|assorted|` +
 	`merch(andise)?|apparel|subscriptions?|membership|club|events?|snacks|sparkling|concentrates?|water|wholesale|equipment|` +
-	`honey|jam|coffee|hidden)\b`)
+	`honey|jam|coffee|hidden|collections?|tickets?|paper)\b`)
 
 // UK round (13 Oct 2026): Tregothnan sells honey and jam by weight, and
 // Tregothnan and Waterloo Tea list coffee; a "Hidden" type is a product the
@@ -139,7 +151,7 @@ var notTeaType = regexp.MustCompile(`(?i)\b(tea ?wares?|wares|utensils|pottery|c
 
 var notTea = regexp.MustCompile(`(?i)\b(teapots?|kettles?|infusers?|strainers?|mugs?|cups?|bowls?|whisks?|scoops?|` +
 	`candles?|incense|t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|sets?|kits?|samplers?|variety|assortment|` +
-	`flights?|subscriptions?|membership|chocolates?|cookies?|shortbread|biscuits?|wholesale)\b`)
+	`flights?|subscriptions?|membership|chocolates?|cookies?|shortbread|biscuits?|wholesale|green coffee)\b`)
 
 // "honey" is deliberately absent: "Phoenix Honey Orchid" is an oolong.
 
