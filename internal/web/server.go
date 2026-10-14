@@ -75,7 +75,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var links []views.MarketLink
 	for _, m := range market.All {
-		link := views.MarketLink{Name: m.Name, URL: "/" + m.Code + "/", Note: m.Hint}
+		link := views.MarketLink{Name: m.Name, URL: "/" + m.Code + "/", TeaURL: "/" + m.Code + "/" + teaKind.listPath, Note: m.Hint}
 		var err error
 		if link.Coffees, err = s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: coffeeKind.name}); err != nil {
 			s.fail(w, r, err)
@@ -154,7 +154,8 @@ var (
 		lede:    "%d coffees from independent roasters, with the price each one shows today.",
 		desc:    "%d coffees from independent roasters with today's price and price history.",
 		perUnit: perKilo,
-		labels:  views.Labels{Back: "All coffees", Maker: "Roasted by", Size: "Bag", Unit: "Per kg", Buy: "Go to roaster"},
+		labels: views.Labels{Back: "All coffees", Maker: "Roasted by", Size: "Bag", Unit: "Per kg", Buy: "Go to roaster",
+			StoreNote: "The roaster's own shop"},
 	}
 	// Tea is priced per 100 g: tea is bought in 25-250 g packs, and a per-kg
 	// figure would read as a price nobody pays.
@@ -164,7 +165,8 @@ var (
 		lede:    "%d teas from specialist tea houses, with the price each one shows today.",
 		desc:    "%d teas from specialist tea houses with today's price and price history.",
 		perUnit: perHundredGrams,
-		labels:  views.Labels{Back: "All teas", Maker: "Sold by", Size: "Size", Unit: "Per 100 g", Buy: "Go to store"},
+		labels: views.Labels{Back: "All teas", Maker: "Sold by", Size: "Size", Unit: "Per 100 g", Buy: "Go to store",
+			StoreNote: "The tea house's own shop"},
 	}
 	kinds = []kind{coffeeKind, teaKind}
 )
@@ -239,12 +241,32 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		return
 	}
 	now := time.Now()
+	// The rows' small charts come from one history query for the whole page,
+	// never one per row.
+	ids := make([]int64, len(rows))
+	for i, c := range rows {
+		ids[i] = c.OfferID
+	}
+	hist, err := s.Q.PriceHistory(r.Context(), ids)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	history := map[int64][]pricePoint{}
+	for _, h := range hist {
+		history[h.OfferID] = append(history[h.OfferID], pricePoint{At: h.SeenAt.Time, Minor: h.PriceMinor})
+	}
 	cards := make([]views.Card, 0, len(rows))
 	for _, c := range rows {
 		card := views.Card{
 			URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
 			Size: c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
-			PerUnit: k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency), Available: true, // the listing is in-stock only
+			PerUnit: k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency),
+			BuyURL:  fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
+			Chart:   sparkline(history[c.OfferID], now, 160, 44, c.Title+" price history"),
+		}
+		if c.Usual > 0 {
+			card.Usual = money(c.Usual, c.Currency)
 		}
 		// Same rules as the coffee page, from the same summary row, so a card
 		// and its page can never disagree.
@@ -257,7 +279,7 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 			card.LowestIn30 = sum.LowestIn30Days()
 		}
 		if c.ImageUrl != nil {
-			card.ImageURL = cdnImage(*c.ImageUrl, 160) // an 80 px thumbnail, sharp on 2x screens
+			card.ImageURL = cdnImage(*c.ImageUrl, 240) // a 120 px image well, sharp on 2x screens
 		}
 		if c.CompareAtMinor != nil {
 			card.StoreWas = money(*c.CompareAtMinor, c.Currency)
@@ -303,15 +325,7 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		xDefault = "/"
 	}
 	p = s.inMarkets(p, m, k, paths, xDefault)
-	// The rows come ordered by store; each store is one group on the page.
-	var groups []views.Group
-	for _, c := range cards {
-		if len(groups) == 0 || groups[len(groups)-1].Store != c.Roaster {
-			groups = append(groups, views.Group{Store: c.Roaster})
-		}
-		groups[len(groups)-1].Cards = append(groups[len(groups)-1].Cards, c)
-	}
-	s.render(w, r, http.StatusOK, views.MarketHome(p, fmt.Sprintf(k.heading, m.Name), fmt.Sprintf(k.lede, total), groups, pg))
+	s.render(w, r, http.StatusOK, views.MarketHome(p, fmt.Sprintf(k.heading, m.Name), fmt.Sprintf(k.lede, total), cards, pg, k.labels))
 }
 
 // pageSize is the number of products per listing page.

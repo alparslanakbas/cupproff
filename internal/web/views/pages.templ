@@ -4,41 +4,52 @@ import "fmt"
 
 // MarketLink is one market on the home page's region chooser.
 type MarketLink struct {
-	Name    string
-	URL     string
-	Coffees int64
-	Teas    int64
-	Note    string
+	Name     string
+	URL      string // the market's coffee listing
+	TeaURL   string
+	Coffees  int64
+	Teas     int64
+	Note     string
+}
+
+templ homeHero(stores int, markets []MarketLink) {
+	<section class="container home-hero">
+		<h1>Coffee and tea prices, with receipts.</h1>
+		<p class="lede">{ fmt.Sprintf("We read %d roasters and tea houses every day and keep every price they show. A sale counts as real only when today's price is under what the bag usually costs.", stores) }</p>
+		<div class="markets">
+			for _, m := range markets {
+				<article class="market-card">
+					<h2>{ m.Name }</h2>
+					<p>{ count(m.Coffees, "coffees") }, { count(m.Teas, "teas") }</p>
+					if m.Note != "" {
+						<p>{ m.Note }</p>
+					}
+					<div class="links">
+						<a class="primary-button" href={ templ.SafeURL(m.URL) }>Coffee</a>
+						<a class="secondary-button" href={ templ.SafeURL(m.TeaURL) }>Tea</a>
+					</div>
+				</article>
+			}
+		</div>
+	</section>
 }
 
 // Home is the region chooser: the site's x-default page.
 templ Home(p Page, stores int, markets []MarketLink) {
-	@Layout(p) {
-		<section class="intro">
-			<h1 class="display">Coffee and tea prices, with receipts.</h1>
-			<p class="lede">{ fmt.Sprintf("We read %d roasters and tea houses every day and keep every price they show. A sale counts as real only when today's price is under what the bag usually costs.", stores) }</p>
-		</section>
-		<section class="regions-board" aria-labelledby="where">
-			<h2 id="where">Where do you buy?</h2>
-			<ul class="menu menu-wide">
-				for _, m := range markets {
-					<li class="item">
-						<a class="item-link" href={ templ.SafeURL(m.URL) }>
-							<span class="item-main">
-								<span class="item-line">
-									<span class="item-name">{ m.Name }</span>
-									<span class="leader" aria-hidden="true"></span>
-									<span class="item-price">{ count(m.Coffees, "coffees") }</span>
-								</span>
-								<span class="item-sub">
-									<span>{ m.Note }</span>
-									<span class="per">{ count(m.Teas, "teas") }</span>
-								</span>
-							</span>
-						</a>
-					</li>
-				}
-			</ul>
+	@Layout(p, homeHero(stores, markets)) {
+		<section class="how" aria-label="How CupProof works">
+			<article class="how-card">
+				<h2>Read every day</h2>
+				<p>Each store's own catalogue, as a buyer in your country sees it: the price, the size and whether it is in stock.</p>
+			</article>
+			<article class="how-card">
+				<h2>Kept as a history</h2>
+				<p>Every price we read is stored, so a product's page shows what it cost last week and last month, not only today.</p>
+			</article>
+			<article class="how-card">
+				<h2>Judged against the usual price</h2>
+				<p>A real drop is a price under what the product sold for on most days of the last month, never under the store's own "was" price.</p>
+			</article>
 		</section>
 	}
 }
@@ -52,11 +63,13 @@ type Card struct {
 	Size        string
 	Price       string
 	PerUnit     string // per kg for coffee, per 100 g for tea
+	Usual       string // our usual price, "" until there is enough history
 	StoreWas    string
-	Available   bool
 	RealDrop    int
 	LowestIn30  bool
 	LowestSince string
+	Chart       string // inline SVG, "" with fewer than two readings
+	BuyURL      string
 }
 
 // Pager links the pages of a listing with plain, crawlable links.
@@ -69,81 +82,88 @@ type Pager struct {
 
 templ badges(realDrop int, lowestSince string, lowestIn30 bool, storeWas string) {
 	if realDrop > 0 || lowestSince != "" || lowestIn30 || storeWas != "" {
-		<span class="badges">
-			if realDrop > 0 {
-				<span class="badge real">{ fmt.Sprintf("Real drop −%d%%", realDrop) }</span>
-			}
+		<div class="badges">
 			if lowestSince != "" {
-				<span class="badge real-quiet">Lowest since { lowestSince }</span>
+				<span class="positive-badge">Lowest since { lowestSince }</span>
 			} else if lowestIn30 {
-				<span class="badge real-quiet">Lowest in 30 days</span>
+				<span class="positive-badge">Lowest in 30 days</span>
+			} else if realDrop > 0 {
+				<span class="positive-badge">{ fmt.Sprintf("Real drop −%d%%", realDrop) }</span>
 			}
 			if storeWas != "" {
-				<span class="badge campaign">Store sale, was { storeWas }</span>
+				<span class="campaign-badge">Store sale</span>
 			}
-		</span>
+		</div>
 	}
 }
 
-// Group is one store's products on a listing page.
-type Group struct {
-	Store string
-	Cards []Card
+templ priceColumn(price, usual string, realDrop int, storeWas, perUnit string) {
+	<div class="product-price">
+		<div class="now">{ price }</div>
+		if realDrop > 0 && usual != "" {
+			<div class="was">{ usual }</div>
+		} else if storeWas != "" {
+			<div class="was">{ storeWas }</div>
+		}
+		if perUnit != "" {
+			<div class="unit">{ perUnit }</div>
+		}
+	</div>
 }
 
-// MarketHome is a market's listing of one section (coffee or tea), set as a
-// café menu: grouped by store, name on the left, price on the right, a
-// dotted leader between.
-templ MarketHome(p Page, heading, lede string, groups []Group, pg Pager) {
-	@Layout(p) {
-		<header class="page-head">
-			<h1 class="display">{ heading }</h1>
-			<p class="lede">{ lede }</p>
-		</header>
-		for _, g := range groups {
-			<section class="store-group">
-				<h2 class="store-name">{ g.Store }</h2>
-				<ol class="menu">
-					for _, c := range g.Cards {
-						<li class="item">
-							<a class="item-link" href={ templ.SafeURL(c.URL) }>
-								if c.ImageURL != "" {
-									<img class="thumb" src={ c.ImageURL } alt="" width="80" height="80" loading="lazy" decoding="async"/>
-								} else {
-									<span class="thumb" aria-hidden="true"></span>
-								}
-								<span class="item-main">
-									<span class="item-line">
-										<span class="item-name">{ c.Title }</span>
-										<span class="leader" aria-hidden="true"></span>
-										<span class="item-price">{ c.Price }</span>
-									</span>
-									<span class="item-sub">
-										<span>{ c.Size }</span>
-										if c.PerUnit != "" {
-											<span class="per">{ c.PerUnit }</span>
-										}
-									</span>
-									@badges(c.RealDrop, c.LowestSince, c.LowestIn30, c.StoreWas)
-								</span>
-							</a>
-						</li>
-					}
-				</ol>
+templ listHero(heading, lede string) {
+	<section class="container page-hero">
+		<h1>{ heading }</h1>
+		<p class="lede">{ lede }</p>
+	</section>
+}
+
+// MarketHome is a market's listing of one section (coffee or tea): rows in
+// one card, as on the sister sites.
+templ MarketHome(p Page, heading, lede string, cards []Card, pg Pager, labels Labels) {
+	@Layout(p, listHero(heading, lede)) {
+		if len(cards) == 0 {
+			<div class="product-list empty">Nothing in stock here today.</div>
+		} else {
+			<section class="product-list grid" aria-label="Products">
+				for _, c := range cards {
+					<article class="product-row">
+						<a class="image-well" href={ templ.SafeURL(c.URL) } tabindex="-1" aria-hidden="true">
+							if c.ImageURL != "" {
+								<img src={ c.ImageURL } alt="" width="200" height="200" loading="lazy" decoding="async"/>
+							}
+						</a>
+						<div class="product-details">
+							@badges(c.RealDrop, c.LowestSince, c.LowestIn30, c.StoreWas)
+							<h2><a href={ templ.SafeURL(c.URL) }>{ c.Title }</a></h2>
+							<p class="meta">{ c.Roaster } · { c.Size }</p>
+						</div>
+						@priceColumn(c.Price, c.Usual, c.RealDrop, c.StoreWas, c.PerUnit)
+						<div class="product-chart">
+							if c.Chart != "" {
+								@templ.Raw(c.Chart)
+							} else {
+								<span class="nochart">History starts today</span>
+							}
+							<a href={ templ.SafeURL(c.URL) }>See the price history</a>
+						</div>
+						<div class="product-store">
+							<span class="store">{ c.Roaster }</span>
+							<span class="store-note">{ labels.StoreNote }</span>
+							<a class="primary-button" href={ templ.SafeURL(c.BuyURL) } rel="nofollow">{ labels.Buy }</a>
+						</div>
+					</article>
+				}
 			</section>
 		}
 		if pg.Pages > 1 {
 			<nav class="pager" aria-label="Pages">
 				if pg.PrevURL != "" {
-					<a href={ templ.SafeURL(pg.PrevURL) } rel="prev">Previous page</a>
-				} else {
-					<span></span>
+					<a class="secondary-button" href={ templ.SafeURL(pg.PrevURL) } rel="prev">Previous</a>
 				}
-				<span class="muted">{ fmt.Sprintf("Page %d of %d", pg.Page, pg.Pages) }</span>
+				<span class="secondary-button current" aria-current="page">{ fmt.Sprintf("Page %d of %d", pg.Page, pg.Pages) }</span>
 				if pg.NextURL != "" {
-					<a href={ templ.SafeURL(pg.NextURL) } rel="next">Next page</a>
-				} else {
-					<span></span>
+					<a class="secondary-button" href={ templ.SafeURL(pg.NextURL) } rel="next">Next</a>
 				}
 			</nav>
 		}
@@ -180,11 +200,12 @@ type Coffee struct {
 
 // Labels are the words a coffee page and a tea page say differently.
 type Labels struct {
-	Back  string // "All coffees"
-	Maker string // "Roasted by"
-	Size  string // "Bag"
-	Unit  string // "Per kg"
-	Buy   string // "Go to roaster"
+	Back      string // "All coffees"
+	Maker     string // "Roasted by"
+	Size      string // "Bag"
+	Unit      string // "Per kg"
+	Buy       string // "Go to roaster"
+	StoreNote string // "The roaster's own shop"
 }
 
 // verdict says in one sentence what the price means, from our own history.
@@ -193,7 +214,7 @@ templ verdict(o Offer) {
 		if !o.Available {
 			Out of stock at the moment.
 		} else if o.RealDrop > 0 {
-			<strong class="real-text">{ fmt.Sprintf("%d%% under its usual %s.", o.RealDrop, o.Usual) }</strong>
+			{ fmt.Sprintf("%d%% under its usual %s.", o.RealDrop, o.Usual) }
 			if o.LowestSince != "" {
 				{ " The lowest since " + o.LowestSince + "." }
 			} else if o.LowestIn30 {
@@ -210,51 +231,64 @@ templ verdict(o Offer) {
 	</p>
 }
 
-templ CoffeePage(p Page, c Coffee) {
-	@Layout(p) {
+templ productHero(c Coffee) {
+	<section class="container page-hero">
 		<nav class="crumbs" aria-label="Breadcrumb"><a href={ templ.SafeURL(c.BackURL) }>{ c.Labels.Back }</a></nav>
-		<article class="product">
-			<div class="product-image">
+		<h1>{ c.Title }</h1>
+		<p class="lede">{ c.Labels.Maker } <a href={ templ.SafeURL(c.RoasterURL) } rel="nofollow">{ c.Roaster }</a></p>
+	</section>
+}
+
+templ CoffeePage(p Page, c Coffee) {
+	@Layout(p, productHero(c)) {
+		<section class="product-head">
+			<div class="image-well">
 				if c.ImageURL != "" {
-					<img src={ c.ImageURL } alt={ c.Title } width="560" height="560"/>
+					<img src={ c.ImageURL } alt={ c.Title } width="480" height="480"/>
 				}
 			</div>
-			<div class="product-body">
-				<p class="maker">{ c.Labels.Maker } <a href={ templ.SafeURL(c.RoasterURL) } rel="nofollow">{ c.Roaster }</a></p>
-				<h1 class="display">{ c.Title }</h1>
-				<ul class="menu menu-sizes" aria-label="Sizes">
-					for _, o := range c.Offers {
-						<li class="item size">
-							<div class="item-line">
-								<span class="item-name">{ o.Size }</span>
-								<span class="leader" aria-hidden="true"></span>
-								<span class="item-price">{ o.Price }</span>
-							</div>
-							if o.PerUnit != "" {
-								<div class="item-sub"><span></span><span class="per">{ o.PerUnit }</span></div>
-							}
-							@verdict(o)
-							if o.Chart != "" {
-								<figure class="history">
-									@templ.Raw(o.Chart)
-									<figcaption>{ "Since " + o.Since + ": high " + o.High + ", low " + o.Low }</figcaption>
-								</figure>
-							}
-							<a class="buy" href={ templ.SafeURL(o.BuyURL) } rel="nofollow">{ c.Labels.Buy }</a>
-						</li>
-					}
-				</ul>
+			<div>
+				<h2>{ c.Roaster }</h2>
+				<p>{ c.Labels.StoreNote }. Every size below is read from it daily, with its price history since we started tracking it.</p>
+				<a class="secondary-button" href={ templ.SafeURL(c.RoasterURL) } rel="nofollow">{ "Visit " + c.Roaster }</a>
 			</div>
-		</article>
+		</section>
+		<section class="product-list" aria-label="Sizes">
+			for _, o := range c.Offers {
+				<article class="product-row size-row">
+					<div class="size">{ o.Size }</div>
+					@priceColumn(o.Price, o.Usual, o.RealDrop, o.StoreWas, o.PerUnit)
+					<div>
+						@badges(o.RealDrop, o.LowestSince, o.LowestIn30, o.StoreWas)
+						if !o.Available {
+							<div class="badges"><span class="outofstock-badge">Out of stock</span></div>
+						}
+						@verdict(o)
+						if o.Chart != "" {
+							<figure class="history">
+								@templ.Raw(o.Chart)
+								<figcaption>{ "Since " + o.Since + ": high " + o.High + ", low " + o.Low }</figcaption>
+							</figure>
+						}
+					</div>
+					<div class="product-store">
+						<a class="primary-button" href={ templ.SafeURL(o.BuyURL) } rel="nofollow">{ c.Labels.Buy }</a>
+					</div>
+				</article>
+			}
+		</section>
 	}
 }
 
+templ notFoundHero() {
+	<section class="container page-hero">
+		<h1>Page not found</h1>
+		<p class="lede">This page doesn't exist, or the store stopped selling it.</p>
+	</section>
+}
+
 templ NotFound(p Page, homeURL string) {
-	@Layout(p) {
-		<header class="page-head">
-			<h1 class="display">Page not found</h1>
-			<p class="lede">This page doesn't exist, or the store stopped selling it.</p>
-		</header>
-		<p><a href={ templ.SafeURL(homeURL) }>Go to the home page</a></p>
+	@Layout(p, notFoundHero()) {
+		<p><a class="secondary-button" href={ templ.SafeURL(homeURL) }>Go to the home page</a></p>
 	}
 }

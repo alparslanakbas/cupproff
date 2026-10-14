@@ -34,7 +34,7 @@ type Alternate struct {
 	URL  string
 }
 
-templ Layout(p Page) {
+templ Layout(p Page, hero templ.Component) {
 	<!DOCTYPE html>
 	<html lang={ p.Lang }>
 		<head>
@@ -55,51 +55,52 @@ templ Layout(p Page) {
 			for _, a := range p.Alternates {
 				<link rel="alternate" hreflang={ a.Lang } href={ templ.SafeURL(a.URL) }/>
 			}
-			<meta name="color-scheme" content="light dark"/>
-			<link rel="preload" href="/static/fraunces.woff2" as="font" type="font/woff2" crossorigin/>
-			<link rel="preload" href="/static/plex-sans.woff2" as="font" type="font/woff2" crossorigin/>
+			<meta name="color-scheme" content="dark light"/>
 			<link rel="stylesheet" href={ StylesheetURL }/>
 			if p.JSONLD != "" {
 				@templ.Raw(`<script type="application/ld+json">` + p.JSONLD + `</script>`)
 			}
 		</head>
 		<body>
-			<header class="site-header">
-				<div class="wrap header-row">
-					<a class="brand" href="/">CupProof</a>
-					if len(p.Nav) > 0 {
-						<nav class="sections" aria-label="Sections">
-							for _, n := range p.Nav {
-								if n.Current {
-									<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
-								} else {
-									<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+			<div class="hero-zone">
+				<header class="topbar">
+					<div class="container topbar-row">
+						<a class="brand" href="/">Cup<span>Proof</span></a>
+						if len(p.Nav) > 0 {
+							<nav class="sections" aria-label="Sections">
+								for _, n := range p.Nav {
+									if n.Current {
+										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+									} else {
+										<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+									}
 								}
-							}
-						</nav>
-					}
-					if len(p.Regions) > 0 {
-						<nav class="regions" aria-label="Region">
-							for _, n := range p.Regions {
-								if n.Current {
-									<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
-								} else {
-									<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+							</nav>
+						}
+						if len(p.Regions) > 0 {
+							<nav class="regions" aria-label="Region">
+								for _, n := range p.Regions {
+									if n.Current {
+										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+									} else {
+										<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+									}
 								}
-							}
-						</nav>
-					}
-				</div>
-			</header>
-			<main class="wrap">
+							</nav>
+						}
+					</div>
+				</header>
+				@hero
+			</div>
+			<main class="container">
 				{ children... }
 			</main>
-			<footer class="site-footer">
-				<div class="wrap">
+			<footer class="footer">
+				<div class="container">
 					if p.MarketNote != "" {
 						<p class="market-note">{ p.MarketNote }</p>
 					}
-					<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a bag sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
+					<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
 					<p>CupProof is independent. Every link goes to the store's own page.</p>
 				</div>
 			</footer>

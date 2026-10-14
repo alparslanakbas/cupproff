@@ -167,10 +167,12 @@ func (q *Queries) ListActiveRoasters(ctx context.Context) ([]ListActiveRoastersR
 
 const listCoffees = `-- name: ListCoffees :many
 SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams, x.currency,
-       x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked
+       x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked, x.offer_id,
+       x.handle, x.roaster_url, x.variant_id
 FROM (
     SELECT DISTINCT ON (c.id)
-        c.slug, c.title, c.image_url, r.name AS roaster_name,
+        c.slug, c.title, c.image_url, r.name AS roaster_name, o.id AS offer_id,
+        c.handle, r.base_url AS roaster_url, o.variant_id,
         o.size_label, o.weight_grams, o.currency,
         s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
         s.low30, s.usual, s.tracked_since, s.lowest_tracked
@@ -206,6 +208,10 @@ type ListCoffeesRow struct {
 	Usual          int64
 	TrackedSince   pgtype.Timestamptz
 	LowestTracked  int64
+	OfferID        int64
+	Handle         string
+	RoasterUrl     string
+	VariantID      int64
 }
 
 // Market listing: one card per coffee IN STOCK, showing its smallest bag
@@ -243,6 +249,10 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 			&i.Usual,
 			&i.TrackedSince,
 			&i.LowestTracked,
+			&i.OfferID,
+			&i.Handle,
+			&i.RoasterUrl,
+			&i.VariantID,
 		); err != nil {
 			return nil, err
 		}
