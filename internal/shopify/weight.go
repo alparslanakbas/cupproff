@@ -11,11 +11,13 @@ import (
 // A bag size as the store writes it: "12 oz", "340g", "2 lb", "1 kg",
 // "1/4 Pound" (Rishi), optionally with a pack count in front ("2 x 12 oz").
 // Without the fraction form "1/4 Pound" read as "4 Pound", 16 times the bag.
+// A fraction is a real one only (one-digit numerator, denominator 2, 3, 4, 8
+// or 16): 19grams' "600/750 g" once read as 600/750 = 0.8 g.
 //
 // Fluid ounces are excluded on purpose: "32 fl oz" is a volume (cold brew
 // concentrate), and turning it into grams would invent data.
 var weightPattern = regexp.MustCompile(
-	`(?i)(?:(\d+)\s*[x×]\s*)?(\d+\s*/\s*[1-9]\d*|\d+(?:[.,]\d+)?)\s*(fl\.?\s*oz|oz|ounces?|lbs?|pounds?|kg|kilos?|kilograms?|g|grams?|gr)\b`)
+	`(?i)(?:(\d+)\s*[x×]\s*)?([1-9]\s*/\s*(?:16|2|3|4|8)|\d+(?:[.,]\d+)?)\s*(fl\.?\s*oz|oz|ounces?|lbs?|pounds?|kg|kilos?|kilograms?|g|grams?|gr)\b`)
 
 var gramsPerUnit = map[string]float64{
 	"oz": 28.349523125, "ounce": 28.349523125, "ounces": 28.349523125,

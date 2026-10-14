@@ -79,7 +79,15 @@ var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|ket
 	// "fellow" is deliberately absent: Methodical sells real coffees named for
 	// the brand ("Fellow Berry Spice"); Fellow's Atmos canister is caught by "atmos".
 	`abo|abonnement|vakiotilaus|cupping|moulin|comandante|delonghi|moccamaster|aarke|atmos|canisters?|` +
-	`vst|baskets?|bundles?|drip ?bags?)\b|\(ws\)`)
+	`vst|baskets?|bundles?|drip ?bags?|probierset)\b|\(ws\)|` +
+	// Gear sold with a bag of coffee thrown in: Belleville's "Lelit Bianca v3
+	// + Formation 2h + 1kg de café" (2,399 EUR) read as 1 kg of coffee.
+	`\+\s*(\d+\s*[*x×]\s*)?\d+\s*(g|gr|kg)\b`)
+
+// Sold-out lots a store keeps archived or hidden carry placeholder prices:
+// 19grams lists an archived "50g / ganze Bohne" at 100 EUR (14 Oct 2026).
+// Such a product is skipped while no size is available (design §15.2).
+var archivedTag = regexp.MustCompile(`(?i)^(archiv(e|ed)?|hidden|feed-hidden)$`)
 
 // Deliberately absent: "variety" (Counter Culture names lots by plant
 // variety, "Finca El Puente - Gesha Variety"; 13 real coffees were lost to
@@ -219,6 +227,10 @@ func ToOffers(products []Product, store Store) ([]Offer, []Skipped) {
 		}
 		if hasTag(p, notConsumerTag) {
 			skipped = append(skipped, Skipped{p.Handle, "not a consumer listing: " + p.Title})
+			continue
+		}
+		if hasTag(p, archivedTag) && !slices.ContainsFunc(p.Variants, func(v Variant) bool { return v.Available }) {
+			skipped = append(skipped, Skipped{p.Handle, "archived and sold out: " + p.Title})
 			continue
 		}
 		bySize := map[int]Offer{}

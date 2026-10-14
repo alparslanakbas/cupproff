@@ -27,6 +27,7 @@ func TestParseWeight(t *testing.T) {
 		{"2 x 12 oz", 680},
 		{"0,5 kg", 500},
 		{"1/4 Pound", 113}, // Rishi; once read as "4 Pound"
+		{"600/750 g", 750}, // two sizes, not the fraction 600/750 (0.8 g)
 		{"113g (4 oz.)", 113},
 		{"1 Cake (357 Grams)", 357},
 		{"32 fl oz cold brew", 0}, // a volume, not a weight
@@ -130,6 +131,9 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Copacabana - Classic Espresso Abo 12 Monate", ProductType: "Espresso", Variants: []Variant{{Title: "250g", Price: "150.00", Available: true}}},
 		{Title: "Suscripción 'Essentials' Espresso", ProductType: "Suscripción", Variants: []Variant{{Title: "250g", Price: "13.00", Available: true}}},
 		{Title: "VST SIEB RIDGED", Variants: []Variant{{Title: "18g", Price: "35.00", Available: true}}},
+		{Title: "Lelit Bianca v3 + Formation 2h + 1kg de café", Variants: []Variant{{Title: "Default Title", Price: "2399.00", Available: true}}},
+		{Title: "Seltene Kaffees Probierset", Variants: []Variant{{Title: "600/750 g", Price: "79.90", Available: true}}},
+		{Title: "14. Barahona AA - Dominikanische Republik Filter", Tags: []string{"archiv"}, Variants: []Variant{{Title: "50g / ganze Bohne", Price: "100.00"}}},
 		// Community Coffee: one unit's weight on a multi-unit pack, and creamer.
 		{Title: "Signature Blend Ground Coffee Packets 40 Count", ProductType: "Ground", Variants: []Variant{{Title: "40 Count - 2.5 oz. Packet", Price: "84.57", Available: true}}},
 		{Title: "Military Match Breakfast Blend Ground Coffee", ProductType: "Military Match", Variants: []Variant{{Title: "12 oz. | 8-pack", Price: "42.96", Available: true}}},
