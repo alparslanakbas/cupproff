@@ -486,7 +486,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	}
 	type source struct {
 		Roaster  string     `json:"roaster"`
-		LastSeen *time.Time `json:"lastSeen"`
+		LastSeen *time.Time `json:"lastRead"` // the last read without an error
 		Stale    bool       `json:"stale"`
 	}
 	out := struct {

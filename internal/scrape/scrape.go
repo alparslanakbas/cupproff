@@ -141,7 +141,9 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 		r.Log.Info("roaster read", "roaster", slug, "market", m.Code,
 			"products", rep.Products, "offers", rep.Offers, "skipped", len(rep.Skipped))
 	}
-	return nil
+	// Read without an error, even when no market applied or no product had a
+	// size: the health check watches for reads that fail, not for offers.
+	return r.Q.MarkRoasterRead(ctx, slug)
 }
 
 // currencyCheckDays is how long a store's presented currency is trusted.

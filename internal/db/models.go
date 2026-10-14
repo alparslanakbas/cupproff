@@ -69,6 +69,7 @@ type Roaster struct {
 	Kind             string
 	VariantMustMatch *string
 	ShopID           *int64
+	LastReadAt       pgtype.Timestamptz
 }
 
 type RoasterMarket struct {

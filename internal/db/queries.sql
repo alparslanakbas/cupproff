@@ -190,16 +190,16 @@ FROM price_points
 WHERE offer_id = ANY(@offer_ids::bigint[]) AND seen_at > now() - interval '180 days'
 ORDER BY offer_id, seen_at;
 
--- When each active roaster was last read, for the health endpoint. A roaster
--- with no offers at all has a NULL last_seen.
+-- When each active roaster was last read without an error, for the health
+-- endpoint. A roaster never read has a NULL last_seen.
 -- name: RoasterFreshness :many
-SELECT r.slug, max(o.last_seen_at)::timestamptz AS last_seen
-FROM roasters r
-LEFT JOIN coffees c ON c.roaster_id = r.id
-LEFT JOIN offers o ON o.coffee_id = c.id
-WHERE r.active
-GROUP BY r.slug
-ORDER BY r.slug;
+SELECT slug, last_read_at AS last_seen
+FROM roasters
+WHERE active
+ORDER BY slug;
+
+-- name: MarkRoasterRead :exec
+UPDATE roasters SET last_read_at = now() WHERE slug = $1;
 
 -- name: UpdateRoasterMeta :exec
 UPDATE roasters

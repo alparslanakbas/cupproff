@@ -252,6 +252,15 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 	return items, nil
 }
 
+const markRoasterRead = `-- name: MarkRoasterRead :exec
+UPDATE roasters SET last_read_at = now() WHERE slug = $1
+`
+
+func (q *Queries) MarkRoasterRead(ctx context.Context, slug string) error {
+	_, err := q.db.Exec(ctx, markRoasterRead, slug)
+	return err
+}
+
 const offersForCoffee = `-- name: OffersForCoffee :many
 SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
        s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
@@ -504,13 +513,10 @@ func (q *Queries) RoasterBySlug(ctx context.Context, slug string) (RoasterBySlug
 }
 
 const roasterFreshness = `-- name: RoasterFreshness :many
-SELECT r.slug, max(o.last_seen_at)::timestamptz AS last_seen
-FROM roasters r
-LEFT JOIN coffees c ON c.roaster_id = r.id
-LEFT JOIN offers o ON o.coffee_id = c.id
-WHERE r.active
-GROUP BY r.slug
-ORDER BY r.slug
+SELECT slug, last_read_at AS last_seen
+FROM roasters
+WHERE active
+ORDER BY slug
 `
 
 type RoasterFreshnessRow struct {
@@ -518,8 +524,8 @@ type RoasterFreshnessRow struct {
 	LastSeen pgtype.Timestamptz
 }
 
-// When each active roaster was last read, for the health endpoint. A roaster
-// with no offers at all has a NULL last_seen.
+// When each active roaster was last read without an error, for the health
+// endpoint. A roaster never read has a NULL last_seen.
 func (q *Queries) RoasterFreshness(ctx context.Context) ([]RoasterFreshnessRow, error) {
 	rows, err := q.db.Query(ctx, roasterFreshness)
 	if err != nil {
