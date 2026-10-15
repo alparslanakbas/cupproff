@@ -3,6 +3,18 @@
    top in both themes, products as rows in one card, green for a real drop
    and amber for the store's own sale, exactly as on the sister sites. */
 
+/* Inter, as on the sister sites, but served from this site (OFL, cut to
+   Latin, 75 KB): no request to Google's servers for EU visitors. Both axes
+   are kept: weight, and optical size, which the browser applies by itself
+   so large headings get Inter's display cut, as with Google's copy. */
+@font-face {
+  font-family: "Inter";
+  src: url("/static/inter.woff2") format("woff2-variations"), url("/static/inter.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --noc-bg: #14100d;
   --noc-surface: #1e1813;
