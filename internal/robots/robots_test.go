@@ -67,3 +67,22 @@ func TestShopifyDefaultsAllowTheHomePageNotTheCart(t *testing.T) {
 		t.Error("/cart.js must be disallowed by Disallow: /cart")
 	}
 }
+
+func TestAllAllowsOnlyWhatEveryTokenAllows(t *testing.T) {
+	const body = "User-agent: wheyproofbot\nDisallow: /products.json\n\nUser-agent: *\nAllow: /\n"
+	alone := All{Parse(body, "cupproofbot")}
+	signed := All{Parse(body, "cupproofbot"), Parse(body, "wheyproofbot")}
+
+	if !alone.Allowed("/products.json") {
+		t.Fatal("cupproofbot alone falls under *, which allows it")
+	}
+	if signed.Allowed("/products.json") {
+		t.Fatal("with the signing bot's name, its Disallow must apply")
+	}
+	if !signed.Allowed("/meta.json") {
+		t.Fatal("a path no group disallows stays allowed")
+	}
+	if !(All{}).Allowed("/products.json") {
+		t.Fatal("no robots.txt allows everything")
+	}
+}

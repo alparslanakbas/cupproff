@@ -5,8 +5,9 @@
 //	cupproof scrape [-only a,b]  read active roasters once, store the prices, refresh summaries
 //	cupproof refresh   recompute the offer summaries from the price history
 //
-// Configuration comes from the environment (DATABASE_URL, SITE_URL, ADDR);
-// a local .env file is read when present, never required.
+// Configuration comes from the environment (DATABASE_URL, SITE_URL, ADDR, and
+// for scrape the optional WEB_BOT_AUTH_KEY); a local .env file is read when
+// present, never required.
 package main
 
 import (
@@ -31,6 +32,7 @@ import (
 	"github.com/alparslanakbas/cupproof/internal/scrape"
 	"github.com/alparslanakbas/cupproof/internal/shopify"
 	"github.com/alparslanakbas/cupproof/internal/web"
+	"github.com/alparslanakbas/cupproof/internal/webbotauth"
 )
 
 func main() {
@@ -109,6 +111,37 @@ func runRefresh(ctx context.Context, log *slog.Logger) error {
 // The scraper identifies itself; the token matches the robots.txt checks.
 const userAgent = "Mozilla/5.0 (compatible; CupProofBot/0.1)"
 
+// Web Bot Auth (see webbotauth). The Shopify registration is the sister
+// site's bot, so signed requests carry its Signature-Agent and User-Agent,
+// and its robots.txt name is honoured too. Signing stays OFF until Shopify
+// approves the registration and has been told this crawler shares it. The
+// key (WEB_BOT_AUTH_KEY, the same seed as in WheyProof's .env) may be set
+// before then: while signRequests is false it is only checked and logged.
+const (
+	signRequests    = false
+	webBotAgent     = "https://api.wheyproof.com"
+	webBotUserAgent = "Mozilla/5.0 (compatible; wheyproofbot/1.0; +https://www.wheyproof.com/bot)"
+	webBotToken     = "wheyproofbot"
+)
+
+// storeTransport is the transport store requests use, signing them when the
+// key is set and signRequests is on; extra holds the robots.txt tokens that
+// signing brings along.
+func storeTransport(log *slog.Logger) (t http.RoundTripper, extra []string) {
+	t = shopify.NewTransport()
+	signer, err := webbotauth.Parse(os.Getenv("WEB_BOT_AUTH_KEY"), webBotAgent, webBotUserAgent)
+	switch {
+	case err != nil:
+		log.Warn("web bot auth off: the configured key is unusable", "err", err)
+	case signer != nil && signRequests:
+		log.Info("web bot auth: requests signed", "agent", signer.Agent(), "keyid", signer.KeyID())
+		return &webbotauth.Transport{Base: t, Signer: signer}, []string{webBotToken}
+	case signer != nil:
+		log.Info("web bot auth: key set, request signing off", "keyid", signer.KeyID())
+	}
+	return t, nil
+}
+
 func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("scrape", flag.ExitOnError)
 	only := fs.String("only", "", "comma-separated roaster slugs to read (default: all active)")
@@ -120,11 +153,12 @@ func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
 		return err
 	}
 	defer pool.Close()
+	transport, extraTokens := storeTransport(log)
 	runner := &scrape.Runner{
 		Q:      db.New(pool),
 		Ingest: &ingest.Service{Pool: pool},
 		Client: &shopify.Client{
-			HTTP:      &http.Client{Transport: shopify.NewTransport(), Timeout: 60 * time.Second},
+			HTTP:      &http.Client{Transport: transport, Timeout: 60 * time.Second},
 			UserAgent: userAgent,
 			PageDelay: 3 * time.Second,
 			// A 5xx gets one retry after this pause (14 Oct 2026: three 503s
@@ -134,8 +168,9 @@ func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
 			// 13 Oct 2026; 20 pages is 5,000 products, one minute at 3 s a page.
 			MaxPages: 20,
 		},
-		Log:  log,
-		Only: splitList(*only),
+		Log:         log,
+		Only:        splitList(*only),
+		ExtraTokens: extraTokens,
 	}
 	failed, err := runner.Run(ctx, market.All)
 	if err != nil {

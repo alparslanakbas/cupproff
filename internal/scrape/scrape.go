@@ -30,6 +30,9 @@ type Runner struct {
 	Client *shopify.Client
 	Log    *slog.Logger
 	Only   []string // when set, only these roaster slugs are read
+	// ExtraTokens are product tokens whose robots.txt rules apply on top of
+	// BotToken's: the bot name signed requests carry (see webbotauth).
+	ExtraTokens []string
 }
 
 // Run reads every active Shopify roaster for the live markets it serves and
@@ -153,7 +156,7 @@ const currencyCheckDays = 7
 // presented returns the currency the store shows in m's country: from the
 // last week's check if there is one, otherwise by reading its home page as a
 // buyer there (when robots.txt allows) and keeping the answer.
-func (r *Runner) presented(ctx context.Context, slug, baseURL string, m market.Market, rules robots.Rules) (string, error) {
+func (r *Runner) presented(ctx context.Context, slug, baseURL string, m market.Market, rules robots.All) (string, error) {
 	cur, err := r.Q.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Code, MaxAgeDays: currencyCheckDays})
 	if err == nil {
 		return cur, nil
@@ -186,13 +189,17 @@ func nonEmpty(s string) *string {
 // error, because "couldn't check" is not the same as "allowed".
 // It goes through the client like every store request: refusals map to the
 // errors the breaker counts, and a 5xx gets its one retry.
-func (r *Runner) robots(ctx context.Context, baseURL string) (robots.Rules, error) {
+func (r *Runner) robots(ctx context.Context, baseURL string) (robots.All, error) {
 	body, err := r.Client.Get(ctx, baseURL+"/robots.txt", 512<<10)
 	if errors.Is(err, shopify.ErrNotShopify) { // 404: no robots.txt
-		return robots.Rules{}, nil
+		return nil, nil
 	}
 	if err != nil {
-		return robots.Rules{}, err
+		return nil, err
 	}
-	return robots.Parse(string(body), BotToken), nil
+	all := robots.All{robots.Parse(string(body), BotToken)}
+	for _, token := range r.ExtraTokens {
+		all = append(all, robots.Parse(string(body), token))
+	}
+	return all, nil
 }

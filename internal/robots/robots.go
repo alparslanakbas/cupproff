@@ -88,6 +88,21 @@ func (r Rules) Allowed(path string) bool {
 	return allowed
 }
 
+// All holds the rules for several product tokens: a path may be fetched only
+// when every one of them allows it. Signed requests carry the sister site's
+// bot name (see webbotauth), so a store's rules for that name apply too.
+type All []Rules
+
+// Allowed reports whether every set of rules allows path.
+func (a All) Allowed(path string) bool {
+	for _, r := range a {
+		if !r.Allowed(path) {
+			return false
+		}
+	}
+	return true
+}
+
 // matches implements RFC 9309 patterns: "*" matches any run of characters
 // and a trailing "$" anchors the end.
 func matches(pattern, path string) bool {
