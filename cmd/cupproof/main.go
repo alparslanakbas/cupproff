@@ -113,12 +113,12 @@ const userAgent = "Mozilla/5.0 (compatible; CupProofBot/0.1)"
 
 // Web Bot Auth (see webbotauth). The Shopify registration is the sister
 // site's bot, so signed requests carry its Signature-Agent and User-Agent,
-// and its robots.txt name is honoured too. Signing stays OFF until Shopify
-// approves the registration and has been told this crawler shares it. The
-// key (WEB_BOT_AUTH_KEY, the same seed as in WheyProof's .env) may be set
-// before then: while signRequests is false it is only checked and logged.
+// and its robots.txt name is honoured too. Signing is ON from 3 Nov 2026:
+// Shopify's review (support ticket 71441774) asked for every request to carry
+// the wheyproofbot User-Agent and a signature, so without the key
+// (WEB_BOT_AUTH_KEY, the same seed as in WheyProof's .env) no store is read.
 const (
-	signRequests    = false
+	signRequests    = true
 	webBotAgent     = "https://api.wheyproof.com"
 	webBotUserAgent = "Mozilla/5.0 (compatible; wheyproofbot/1.0; +https://www.wheyproof.com/bot)"
 	webBotToken     = "wheyproofbot"
@@ -126,20 +126,25 @@ const (
 
 // storeTransport is the transport store requests use, signing them when the
 // key is set and signRequests is on; extra holds the robots.txt tokens that
-// signing brings along.
-func storeTransport(log *slog.Logger) (t http.RoundTripper, extra []string) {
+// signing brings along. With signing on, a missing or unusable key is an
+// error: no store is read unsigned.
+func storeTransport(log *slog.Logger) (t http.RoundTripper, extra []string, err error) {
 	t = shopify.NewTransport()
 	signer, err := webbotauth.Parse(os.Getenv("WEB_BOT_AUTH_KEY"), webBotAgent, webBotUserAgent)
 	switch {
+	case err != nil && signRequests:
+		return nil, nil, fmt.Errorf("web bot auth: the configured key is unusable: %w", err)
 	case err != nil:
 		log.Warn("web bot auth off: the configured key is unusable", "err", err)
 	case signer != nil && signRequests:
 		log.Info("web bot auth: requests signed", "agent", signer.Agent(), "keyid", signer.KeyID())
-		return &webbotauth.Transport{Base: t, Signer: signer}, []string{webBotToken}
+		return &webbotauth.Transport{Base: t, Signer: signer}, []string{webBotToken}, nil
+	case signRequests:
+		return nil, nil, errors.New("web bot auth: WEB_BOT_AUTH_KEY is not set, and every store request must be signed")
 	case signer != nil:
 		log.Info("web bot auth: key set, request signing off", "keyid", signer.KeyID())
 	}
-	return t, nil
+	return t, nil, nil
 }
 
 func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
@@ -153,7 +158,10 @@ func runScrape(ctx context.Context, log *slog.Logger, args []string) error {
 		return err
 	}
 	defer pool.Close()
-	transport, extraTokens := storeTransport(log)
+	transport, extraTokens, err := storeTransport(log)
+	if err != nil {
+		return err
+	}
 	runner := &scrape.Runner{
 		Q:      db.New(pool),
 		Ingest: &ingest.Service{Pool: pool},

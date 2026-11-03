@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/alparslanakbas/cupproof/internal/market"
 )
@@ -355,5 +356,23 @@ func TestGetRetriesAServerErrorOnceButNotARefusal(t *testing.T) {
 	calls, status = 0, http.StatusTooManyRequests
 	if _, err := c.Get(context.Background(), srv.URL+"/products.json", 1024); !errors.Is(err, ErrRateLimited) || calls != 1 {
 		t.Fatalf("429: err %v, calls %d; want ErrRateLimited without a retry", err, calls)
+	}
+}
+
+// A store's Crawl-delay spaces every request to it (MinGap, set per store).
+func TestMinGapSpacesRequests(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), UserAgent: "test", MinGap: 300 * time.Millisecond}
+
+	if _, err := c.Get(context.Background(), srv.URL+"/a", 1<<10); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := c.Get(context.Background(), srv.URL+"/b", 1<<10); err != nil {
+		t.Fatal(err)
+	}
+	if waited := time.Since(start); waited < 250*time.Millisecond {
+		t.Errorf("second request after %v, want at least the 300ms gap", waited)
 	}
 }

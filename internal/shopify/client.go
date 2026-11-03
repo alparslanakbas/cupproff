@@ -53,6 +53,10 @@ type Client struct {
 	MaxPages  int
 	// ServerRetryDelay is the pause before the one retry a 5xx answer gets.
 	ServerRetryDelay time.Duration
+	// MinGap is the least time between two requests: a store's robots.txt
+	// Crawl-delay. The runner sets it on a copy of the client per store.
+	MinGap time.Duration
+	last   time.Time
 }
 
 // FetchProducts reads every catalog page of a store as a customer of m.
@@ -126,6 +130,14 @@ func (c *Client) getOnce(ctx context.Context, u string, limit int64) ([]byte, in
 		return nil, 0, err
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
+	if wait := time.Until(c.last.Add(c.MinGap)); c.MinGap > 0 && wait > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, 0, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	c.last = time.Now()
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, 0, err

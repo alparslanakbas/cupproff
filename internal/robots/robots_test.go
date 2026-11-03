@@ -1,6 +1,9 @@
 package robots
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 const sample = `
 # comment
@@ -84,5 +87,33 @@ func TestAllAllowsOnlyWhatEveryTokenAllows(t *testing.T) {
 	}
 	if !(All{}).Allowed("/products.json") {
 		t.Fatal("no robots.txt allows everything")
+	}
+}
+
+// Shopify's bot review asked how the crawler handles Crawl-delay (2 Nov 2026).
+func TestCrawlDelayComesFromTheGroupThatApplies(t *testing.T) {
+	cases := []struct {
+		body string
+		want time.Duration
+	}{
+		{"User-agent: *\nCrawl-delay: 10\n", 10 * time.Second},
+		{"User-agent: cupproofbot\nCrawl-delay: 2.5\n\nUser-agent: *\nCrawl-delay: 30\n", 2500 * time.Millisecond},
+		{"User-agent: cupproofbot\nDisallow: /cart\n\nUser-agent: *\nCrawl-delay: 30\n", 0},
+		{"User-agent: *\nCrawl-delay: soon\n", 0},
+		{"User-agent: *\nCrawl-delay: -5\n", 0},
+		{"User-agent: *\nDisallow: /cart\n", 0},
+	}
+	for _, c := range cases {
+		if got := Parse(c.body, "cupproofbot").Delay; got != c.want {
+			t.Errorf("%q: delay %v, want %v", c.body, got, c.want)
+		}
+	}
+}
+
+func TestAllTakesTheLongestCrawlDelay(t *testing.T) {
+	body := "User-agent: cupproofbot\nCrawl-delay: 2\n\nUser-agent: wheyproofbot\nCrawl-delay: 7\n"
+	all := All{Parse(body, "cupproofbot"), Parse(body, "wheyproofbot")}
+	if got := all.Delay(); got != 7*time.Second {
+		t.Errorf("delay %v, want 7s", got)
 	}
 }

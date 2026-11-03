@@ -5,12 +5,22 @@ package robots
 
 import (
 	"bufio"
+	"math"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Rules is a parsed robots.txt, reduced to the group that applies to us.
+//
+// Crawl-delay (3 Nov 2026) isn't in the RFC, but Shopify's bot review asked
+// how the crawler handles it, and it was read past until then. The group's
+// value is the least time between two requests to the store; a value that
+// isn't a positive number is ignored.
 type Rules struct {
 	allow, disallow []string
+	// Delay is the group's Crawl-delay, zero when it sets none.
+	Delay time.Duration
 }
 
 // Parse keeps the rules of the group for token (case-insensitive) or, when
@@ -20,6 +30,7 @@ func Parse(body, token string) Rules {
 	type group struct {
 		agents          []string
 		allow, disallow []string
+		delay           time.Duration
 	}
 	var groups []*group
 	var cur *group
@@ -41,6 +52,16 @@ func Parse(body, token string) Rules {
 			}
 			cur.agents = append(cur.agents, strings.ToLower(value))
 			lastWasAgent = true
+		case "crawl-delay":
+			lastWasAgent = false
+			s, err := strconv.ParseFloat(value, 64)
+			if cur == nil || err != nil || !(s > 0) || math.IsInf(s, 0) {
+				continue
+			}
+			// Capped at a day only to stay in range; that long refuses the store anyway.
+			if d := time.Duration(math.Min(s, 86400) * float64(time.Second)); d > cur.delay {
+				cur.delay = d
+			}
 		case "allow", "disallow":
 			lastWasAgent = false
 			if cur == nil || value == "" {
@@ -59,7 +80,7 @@ func Parse(body, token string) Rules {
 	for _, g := range groups {
 		for _, a := range g.agents {
 			if a == token {
-				return Rules{g.allow, g.disallow}
+				return Rules{g.allow, g.disallow, g.delay}
 			}
 			if a == "*" && star == nil {
 				star = g
@@ -67,7 +88,7 @@ func Parse(body, token string) Rules {
 		}
 	}
 	if star != nil {
-		return Rules{star.allow, star.disallow}
+		return Rules{star.allow, star.disallow, star.delay}
 	}
 	return Rules{}
 }
@@ -101,6 +122,15 @@ func (a All) Allowed(path string) bool {
 		}
 	}
 	return true
+}
+
+// Delay is the longest Crawl-delay among the tokens' rules.
+func (a All) Delay() time.Duration {
+	var d time.Duration
+	for _, r := range a {
+		d = max(d, r.Delay)
+	}
+	return d
 }
 
 // matches implements RFC 9309 patterns: "*" matches any run of characters

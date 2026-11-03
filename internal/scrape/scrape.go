@@ -67,6 +67,10 @@ func (r *Runner) Run(ctx context.Context, markets []market.Market) (failed int, 
 	return failed, nil
 }
 
+// maxCrawlDelay is the longest Crawl-delay waited out between requests. A
+// store asking for more is not read at all rather than read faster.
+const maxCrawlDelay = 5 * time.Minute
+
 // stopAfter is how many stores may refuse us in a row (429, or a bot
 // challenge) before the run stops. The server's IP is shared with the
 // sister sites (WheyProof, ProteinAvcısı); pressing on against a store
@@ -100,7 +104,14 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 			return fmt.Errorf("robots.txt disallows %s", path)
 		}
 	}
-	meta, err := r.Client.FetchMeta(ctx, baseURL)
+	if d := rules.Delay(); d > maxCrawlDelay {
+		return fmt.Errorf("robots.txt asks for a crawl-delay of %s, longer than we wait", d)
+	}
+	// The store's own copy, so its Crawl-delay spaces only its requests
+	// (counted from the robots.txt read above).
+	client := *r.Client
+	client.MinGap = rules.Delay()
+	meta, err := client.FetchMeta(ctx, baseURL)
 	if err != nil {
 		return err
 	}
@@ -112,7 +123,7 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 	}
 	read, check, skipped := shopify.MarketsFor(meta, markets)
 	for _, m := range check {
-		cur, err := r.presented(ctx, slug, baseURL, m, rules)
+		cur, err := r.presented(ctx, &client, slug, baseURL, m, rules)
 		switch {
 		case err != nil:
 			// A refusal counts for the breaker; anything else only skips
@@ -131,7 +142,7 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 		r.Log.Info("market skipped", "roaster", slug, "why", why)
 	}
 	for _, m := range read {
-		products, err := r.Client.FetchProducts(ctx, baseURL, m)
+		products, err := client.FetchProducts(ctx, baseURL, m)
 		if errors.Is(err, shopify.ErrPageCap) {
 			r.Log.Warn("catalog cut at the page cap; raise MaxPages", "roaster", slug, "market", m.Code, "products", len(products))
 		} else if err != nil {
@@ -156,7 +167,7 @@ const currencyCheckDays = 7
 // presented returns the currency the store shows in m's country: from the
 // last week's check if there is one, otherwise by reading its home page as a
 // buyer there (when robots.txt allows) and keeping the answer.
-func (r *Runner) presented(ctx context.Context, slug, baseURL string, m market.Market, rules robots.All) (string, error) {
+func (r *Runner) presented(ctx context.Context, client *shopify.Client, slug, baseURL string, m market.Market, rules robots.All) (string, error) {
 	cur, err := r.Q.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Code, MaxAgeDays: currencyCheckDays})
 	if err == nil {
 		return cur, nil
@@ -167,7 +178,7 @@ func (r *Runner) presented(ctx context.Context, slug, baseURL string, m market.M
 	if path := shopify.HomePath(m); !rules.Allowed(path) {
 		return "", fmt.Errorf("robots.txt disallows %s", path)
 	}
-	cur, err = r.Client.PresentedCurrency(ctx, baseURL, m)
+	cur, err = client.PresentedCurrency(ctx, baseURL, m)
 	if err != nil {
 		return "", err
 	}
