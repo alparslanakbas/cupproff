@@ -1,17 +1,15 @@
 # CoffeeProof's hosts (the site was named CupProof until 4 Nov 2026; the file,
-# the container and the log keep that name), for the Turkish stack's Caddy on the same VM, the way
-# WheyProof's are: that Caddyfile imports site files from a mounted
-# directory, and its global options (Cloudflare's trusted_proxies) apply
-# here too.
-#
-# NOT MOUNTED YET. coffeeproof.org was bought on 4 Nov 2026 (Cloudflare
-# Registrar); until its DNS points here, Caddy would only fail to get
-# certificates for these names. On the day: mount this directory in the
-# Turkish compose file, add the import, run `caddy validate`, deploy.
+# the container and the log keep that name), for the Turkish stack's Caddy on
+# the same VM, the way WheyProof's are: the Turkish compose file mounts this
+# directory at /etc/caddy/sites-cupproof, its Caddyfile ends with
+# `import sites-cupproof/*.caddy`, and its global options (Cloudflare's
+# trusted_proxies) apply here too. Snippet names share that Caddyfile's
+# namespace, hence the cupproof- prefix.
 #
 # The upstream is the network alias the site container gets on "web-edge"
 # (scripts/deploy.sh). A broken file here takes every site of that Caddy
-# down on its next restart: validate before deploying.
+# down on its next restart: validate before deploying, with absolute paths
+# (a relative import that matches nothing still says "Valid").
 
 (cupproof-access-log) {
 	log {
@@ -25,14 +23,47 @@
 	}
 }
 
+# Browser security headers, the sister sites' set. The Go server sends none of
+# its own, so nothing here doubles up.
+# CSP: no script of ours (the pages work without it), the fonts are served from
+# here, product images come from each store's CDN ("https:"). style-src needs
+# 'unsafe-inline' for the style attributes that place the map pins and size the
+# calculator's bar. The Cloudflare Web Analytics beacon is allowed in case it is
+# switched on for this zone.
+(cupproof-security-headers) {
+	header {
+		# No "preload": getting off the preload list takes months.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+		-X-Powered-By
+	}
+}
+
+# No 502 during a deploy: while the site container is recreated, Caddy keeps
+# retrying a request it couldn't connect for up to 30 s (the sister sites'
+# setting, measured there on 27 Oct 2026; a real outage still shows as a 502
+# after 30 s).
+(cupproof-retry-upstream) {
+	lb_try_duration 30s
+	lb_try_interval 250ms
+}
+
 www.coffeeproof.org {
+	import cupproof-security-headers
 	import cupproof-access-log
 	encode zstd gzip
-	reverse_proxy cupproof-web:8080
+	reverse_proxy cupproof-web:8080 {
+		import cupproof-retry-upstream
+	}
 }
 
 # One canonical host, as on the sister sites.
 coffeeproof.org {
+	import cupproof-security-headers
 	import cupproof-access-log
 	redir https://www.coffeeproof.org{uri} permanent
 }
