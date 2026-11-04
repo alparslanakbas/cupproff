@@ -43,9 +43,7 @@ type Brand struct {
 	BestLabel  string
 	About      []Fact
 	RateNote   string // set when the store prices in another currency than the market's
-	Filters    []Filter
-	Cards      []Card
-	Pager      Pager
+	Deals      Deals
 	Labels     Labels
 	Others     []BrandCard
 }
@@ -161,7 +159,7 @@ templ BrandPage(p Page, b Brand) {
 	@Layout(p, brandHero(b)) {
 		<section class="brand-list">
 			<h2>{ b.Name + " on today's " + b.Market + " list" }</h2>
-			@listBody(b.Filters, b.Cards, b.Pager, b.Labels)
+			@dealsSection(b.Deals)
 		</section>
 		<section class="section">
 			<div class="card about-card">

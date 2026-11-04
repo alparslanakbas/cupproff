@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{market}/tea/{slug}", s.product(teaKind))
 	mux.HandleFunc("GET /{market}/brands/{$}", s.brandsIndex)
 	mux.HandleFunc("GET /{market}/brands/{slug}", s.brandPage)
+	mux.HandleFunc("GET /{market}/categories/{$}", s.categoriesPage)
+	// The sister sites' other pages (4 Nov 2026). Literal paths: ServeMux
+	// prefers them to the market patterns.
+	mux.HandleFunc("GET /theme/{mode}", s.setTheme)
+	mux.HandleFunc("GET /watchlist", s.watchlist)
+	mux.HandleFunc("GET /watchlist/toggle", s.toggle(watchCookie, maxWatch))
+	mux.HandleFunc("GET /compare", s.compare)
+	mux.HandleFunc("GET /compare/toggle", s.toggle(compareCookie, maxCompare))
+	mux.HandleFunc("GET /compare/clear", s.clearCompare)
+	mux.HandleFunc("GET /calculators", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/calculators/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /calculators/{$}", s.calculators)
+	mux.HandleFunc("GET /calculators/{slug}", s.calculator)
+	mux.HandleFunc("GET /which-coffee", s.whichCoffee)
+	mux.HandleFunc("GET /black-friday", s.blackFriday)
+	mux.HandleFunc("GET /cheapest-coffee", s.cheapest)
+	for slug := range infoPages {
+		mux.HandleFunc("GET /"+slug, s.info(slug))
+	}
 	// The guides are one set for every market. These patterns are narrower
 	// than the market ones above, so ServeMux prefers them.
 	mux.HandleFunc("GET /guides", func(w http.ResponseWriter, r *http.Request) {
@@ -79,73 +100,60 @@ func (s *Server) Handler() http.Handler {
 	// sister sites' monitor once stayed red because their endpoint didn't).
 	mux.HandleFunc("GET /api/health/sources", s.health)
 	mux.HandleFunc("/", s.notFound)
-	return mux
+	return s.withVisitor(mux)
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var links []views.MarketLink
-	for _, m := range market.All {
-		link := views.MarketLink{Name: m.Name, Short: m.Short, URL: "/" + m.Code + "/", TeaURL: "/" + m.Code + "/" + teaKind.listPath, Note: m.Hint}
-		var err error
-		if link.Coffees, err = s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: coffeeKind.name}); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		if link.Teas, err = s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: teaKind.name}); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		links = append(links, link)
-	}
-	stores, err := s.Q.RoasterFreshness(ctx) // one row per active store
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
+	m := market.US
 	p := views.Page{
 		Title: "CoffeeProof — coffee and tea price history from independent sellers", Lang: "en",
 		Description: "Compare specialty coffee and tea prices from independent roasters and tea houses, and see whether a sale is a real price drop.",
 		Canonical:   s.SiteURL + "/",
-		// The header's menu, as on every other page: the deals below are the
-		// US ones, so the sections lead to the US lists, like the guides'.
-		Nav: nav(market.US, ""),
+		Nav:         nav(m, ""),
 	}
-	// The region chooser is every market's x-default: searchers outside the
-	// listed regions land where they can pick one.
-	for _, m := range market.All {
-		for _, h := range m.Hreflangs {
-			p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + "/" + m.Code + "/"})
+	// The home page is every market's x-default: searchers outside the listed
+	// regions land here and pick theirs in the header.
+	for _, mk := range market.All {
+		for _, h := range mk.Hreflangs {
+			p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + "/" + mk.Code + "/"})
 		}
+		p.Regions = append(p.Regions, views.NavLink{Name: mk.Short, URL: "/" + mk.Code + "/", Current: mk.Code == m.Code})
 	}
 	p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + "/"})
-	// Today's deals: the US coffee listing's real drops, deepest first; the
-	// first one is the hero's "top deal". On a day without a real coffee drop
-	// the tea listing's take their place, so the hero isn't left half empty:
-	// real coffee drops are rare once a converted price counts only with the
-	// store's own drop (4 Nov 2026: US coffee 0, US tea 61).
-	k := coffeeKind
-	deals, err := s.Q.ListCoffees(ctx, db.ListCoffeesParams{Market: market.US.Code, Kind: k.name, Show: "drops", PageSize: 4})
-	if err == nil && len(deals) == 0 {
-		k = teaKind
-		deals, err = s.Q.ListCoffees(ctx, db.ListCoffeesParams{Market: market.US.Code, Kind: k.name, Show: "drops", PageSize: 4})
-	}
+	// Today's top deal: the US coffees' deepest real drop; on a day without
+	// one, the teas' (4 Nov 2026: US coffee 0, US tea 61), then a store sale.
+	h, err := s.hero(ctx, m, coffeeKind, &teaKind)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	cards, err := s.cards(ctx, market.US, k, deals)
+	teas, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: teaKind.name})
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	h := views.HomeData{Stores: len(stores), Markets: links, Deals: cards, DealsKind: k.name,
-		DealsURL: "/" + market.US.Code + "/" + k.listPath + "?show=drops", Labels: k.labels}
-	if len(deals) > 0 && deals[0].ImageUrl != nil {
-		h.TopImage = cdnImage(*deals[0].ImageUrl, 720)
+	h.Tracked = views.Amount(h.Count+teas, "product tracked", "products tracked")
+	h.Heading = "Find the real coffee deal."
+	h.Lede = "We check coffee and tea prices every day. We show a price when it really drops, and say when a sale is only the store's own claim."
+	// Like the sister sites' home page, the list itself: the US coffees'
+	// first page. Its controls lead to the US list, which has every page, so
+	// this page never repeats a filtered view under its own address.
+	st, _, err := s.buildList(ctx, m, coffeeKind, "/"+m.Code+"/", listState{page: 1}, 0, homeSize)
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
-	s.render(w, r, http.StatusOK, views.Home(p, h))
+	d := st.deals
+	d.Pager = views.Pager{}
+	d.MoreURL, d.MoreLabel = "/"+m.Code+"/", fmt.Sprintf("See all %d US coffees", st.total)
+	p.Strip = strip(m, coffeeKind, "")
+	p = chrome(r, p, "/"+m.Code+"/")
+	s.render(w, r, http.StatusOK, views.Home(p, views.Listing{Hero: h, Deals: d}))
 }
+
+// homeSize is the number of rows on the home page.
+const homeSize = 24
 
 // inMarkets fills in what every page of a market shares: hreflang
 // alternates to the same page in the markets where it exists (paths, by
@@ -174,49 +182,56 @@ func (s *Server) inMarkets(p views.Page, current market.Market, k kind, paths ma
 // kind is what differs between the coffee and the tea sections. A store
 // sells one kind (roasters.kind); the pages, rules and tables are shared.
 type kind struct {
-	name     string // roasters.kind
-	segment  string // product pages live at /{market}/{segment}/{slug}
-	listPath string // the listing under the market URL: "" or "tea/"
-	nav      string
-	title    string // listing <title>, %s = market name
-	heading  string // listing <h1>, %s = market name
-	lede     string // %d = number of products in stock
-	desc     string // %d = number of products in stock
-	perUnit  func(priceMinor int64, grams int32, currency string) string
-	labels   views.Labels
+	name       string // roasters.kind
+	segment    string // product pages live at /{market}/{segment}/{slug}
+	listPath   string // the listing under the market URL: "" or "tea/"
+	nav        string
+	icon       string // the category strip's icon
+	title      string // listing <title>, %s = market name
+	heading    string // listing <h1>, %s = market name
+	lede       string // %d = number of products in stock
+	desc       string // %d = number of products in stock
+	perUnit    func(priceMinor int64, grams int32, currency string) string
+	labels     views.Labels
+	categories []category
 }
 
 var (
 	coffeeKind = kind{
-		name: "coffee", segment: "coffee", listPath: "", nav: "Coffee",
+		name: "coffee", segment: "coffee", listPath: "", nav: "Coffee", icon: "cup",
 		title: "Specialty coffee prices in the %s", heading: "Coffee prices in the %s",
 		lede:    "%d coffees from independent roasters, with the price each one shows today.",
 		desc:    "%d coffees from independent roasters with today's price and price history.",
 		perUnit: perKilo,
 		labels: views.Labels{Back: "All coffees", Maker: "Roasted by", Size: "Bag", Unit: "Per kg", Buy: "Go to roaster",
 			StoreNote: "The roaster's own shop"},
+		categories: coffeeCategories,
 	}
 	// Tea is priced per 100 g: tea is bought in 25-250 g packs, and a per-kg
 	// figure would read as a price nobody pays.
 	teaKind = kind{
-		name: "tea", segment: "tea", listPath: "tea/", nav: "Tea",
+		name: "tea", segment: "tea", listPath: "tea/", nav: "Tea", icon: "leaf",
 		title: "Specialty tea prices in the %s", heading: "Tea prices in the %s",
 		lede:    "%d teas from specialist tea houses, with the price each one shows today.",
 		desc:    "%d teas from specialist tea houses with today's price and price history.",
 		perUnit: perHundredGrams,
 		labels: views.Labels{Back: "All teas", Maker: "Sold by", Size: "Size", Unit: "Per 100 g", Buy: "Go to store",
 			StoreNote: "The tea house's own shop"},
+		categories: teaCategories,
 	}
 	kinds = []kind{coffeeKind, teaKind}
 )
 
-// nav is the header's menu in a market: its sections, its brands and the
-// guides (one set for every market), marking the current one by name
-// ("coffee", "tea", "brands", "guides").
+// nav is the header's menu in a market, as on the sister sites: the
+// sections, the stores, the quiz, the calculators and the guides, marking
+// the current one by name ("coffee", "tea", "brands", "quiz", "calculators",
+// "guides").
 func nav(m market.Market, current string) []views.NavLink {
 	links := kindLinks(m, current)
 	links = append(links,
 		views.NavLink{Name: "Brands", URL: "/" + m.Code + "/brands/", Current: current == "brands"},
+		views.NavLink{Name: "Which coffee?", URL: "/which-coffee", Current: current == "quiz"},
+		views.NavLink{Name: "Calculators", URL: "/calculators/", Current: current == "calculators"},
 		views.NavLink{Name: "Guides", URL: "/guides/", Current: current == "guides"})
 	return links
 }
@@ -242,8 +257,8 @@ func (s *Server) addSlash(w http.ResponseWriter, r *http.Request) {
 // anything else at that depth is not a page.
 func (s *Server) addSectionSlash(w http.ResponseWriter, r *http.Request) {
 	if _, ok := market.ByCode(r.PathValue("market")); ok {
-		if r.PathValue("section") == "brands" {
-			http.Redirect(w, r, "/"+r.PathValue("market")+"/brands/", http.StatusMovedPermanently)
+		if sec := r.PathValue("section"); sec == "brands" || sec == "categories" {
+			http.Redirect(w, r, "/"+r.PathValue("market")+"/"+sec+"/", http.StatusMovedPermanently)
 			return
 		}
 		for _, k := range kinds {
@@ -266,131 +281,68 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		s.notFound(w, r)
 		return
 	}
-	st, ok := s.readList(w, r, m, k, "/"+m.Code+"/"+k.listPath, 0)
+	base := "/" + m.Code + "/" + k.listPath
+	st, ok := s.readList(w, r, m, k, base, 0)
 	if !ok {
 		return
 	}
-	title := fmt.Sprintf(k.title, m.Name)
+	cat, _ := k.category(st.cat)
+	heading := fmt.Sprintf(k.heading, m.Name)
+	if st.cat != "" {
+		heading = fmt.Sprintf("%s prices in the %s", cat.noun, m.Name)
+	}
+	title := heading
+	if st.cat == "" {
+		title = fmt.Sprintf(k.title, m.Name)
+	}
 	if st.page > 1 {
 		title = fmt.Sprintf("%s, page %d", title, st.page)
 	}
-	// Each page is its own canonical (not page 1): pointing every page at
-	// page 1 would tell search engines to drop the products listed further on.
+	// A category alone is a page of its own, with its own canonical; any
+	// other filter, order or search repeats the plain list's products and
+	// asks not to be indexed. Each page is its own canonical (not page 1):
+	// pointing every page at page 1 would drop the products further on.
+	onlyCat := st.cat != "" && st.show == "" && st.roaster == "" && st.sort == "" && st.q == ""
 	p := views.Page{
 		Title: title + " — CoffeeProof", Lang: m.Lang,
 		Description: fmt.Sprintf(k.desc, st.total),
 		Canonical:   s.SiteURL + st.pageURL(st.page),
-		NoIndex:     st.show != "",
+		NoIndex:     st.filtered() && !onlyCat,
 		Nav:         nav(m, k.name),
+		Query:       st.q,
 	}
-	// Page 1 of a listing has a sibling in every market. Page N does not:
-	// the third page of US coffees and of UK coffees list different coffees,
-	// so a later page names only itself.
+	// Page 1 of a plain listing (or of a category) has a sibling in every
+	// market. Page N does not: the third page of US coffees and of UK coffees
+	// list different coffees, so a later page names only itself.
 	paths := map[string]string{m.Code: st.pageURL(st.page)}
 	xDefault := ""
-	if st.page == 1 && st.show == "" {
+	if st.page == 1 && (!st.filtered() || onlyCat) {
 		for _, other := range market.All {
 			paths[other.Code] = "/" + other.Code + "/" + k.listPath
+			if onlyCat {
+				paths[other.Code] += "?cat=" + st.cat
+			}
 		}
-		xDefault = "/"
+		if !onlyCat {
+			xDefault = "/"
+		}
 	}
 	p = s.inMarkets(p, m, k, paths, xDefault)
-	l := views.Listing{
-		Heading: m.Short + " " + k.name, Market: m.Short, Section: k.nav, MarketURL: "/" + m.Code + "/",
-		PricesIn: "Prices in " + currencyName(m.Currency) + ", checked daily",
-		Kinds:    kindLinks(m, k.name),
-		Filters:  st.filters, Cards: st.cards, Pager: st.pager, Labels: k.labels,
-	}
-	s.render(w, r, http.StatusOK, views.MarketHome(p, l))
-}
-
-// listState is one page of a filtered list of coffees. A market listing and
-// a brand page share it, so their filters, pages and rows work alike.
-type listState struct {
-	show    string // "", "drops" or "sales"
-	page    int
-	total   int64 // coffees under the current filter
-	cards   []views.Card
-	pager   views.Pager
-	filters []views.Filter
-	pageURL func(page int) string // under the current filter
-}
-
-// readList reads ?show= and ?page= for the list at base and the rows they
-// ask for; roaster narrows it to one store (0 = all). Page 1 is the bare
-// URL; ?page=1, a page past the end or an unknown filter is not a page of
-// ours, so each page has exactly one address. When the request is not a
-// page, readList answers it (404 or 500) and returns false.
-func (s *Server) readList(w http.ResponseWriter, r *http.Request, m market.Market, k kind, base string, roaster int64) (listState, bool) {
-	st := listState{show: r.URL.Query().Get("show"), page: 1}
-	if st.show != "" && st.show != "drops" && st.show != "sales" {
-		s.notFound(w, r)
-		return st, false
-	}
-	if raw := r.URL.Query().Get("page"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 2 {
-			s.notFound(w, r)
-			return st, false
-		}
-		st.page = n
-	}
-	counts := map[string]int64{}
-	for _, f := range []string{"", "drops", "sales"} {
-		n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: f, Roaster: roaster})
-		if err != nil {
-			s.fail(w, r, err)
-			return st, false
-		}
-		counts[f] = n
-	}
-	st.total = counts[st.show]
-	pages := max(1, int((st.total+pageSize-1)/pageSize))
-	if st.page > pages {
-		s.notFound(w, r)
-		return st, false
-	}
-	rows, err := s.Q.ListCoffees(r.Context(), db.ListCoffeesParams{
-		Market: m.Code, Kind: k.name, Show: st.show, PageSize: pageSize, Skip: int32((st.page - 1) * pageSize), Roaster: roaster,
-	})
+	h, err := s.hero(r.Context(), m, k, nil)
 	if err != nil {
 		s.fail(w, r, err)
-		return st, false
+		return
 	}
-	if st.cards, err = s.cards(r.Context(), m, k, rows); err != nil {
-		s.fail(w, r, err)
-		return st, false
+	h.Crumbs = []views.NavLink{{Name: "Home", URL: "/"}, {Name: m.Short, URL: "/" + m.Code + "/"}, {Name: k.nav, URL: base}}
+	if st.cat != "" {
+		h.Crumbs = append(h.Crumbs, views.NavLink{Name: cat.label, URL: base + "?cat=" + cat.slug})
 	}
-	show := st.show
-	st.pageURL = func(n int) string {
-		q := url.Values{}
-		if show != "" {
-			q.Set("show", show)
-		}
-		if n > 1 {
-			q.Set("page", strconv.Itoa(n))
-		}
-		if len(q) == 0 {
-			return base
-		}
-		return base + "?" + q.Encode()
-	}
-	st.pager = views.Pager{Page: st.page, Pages: pages, Total: int(st.total)}
-	if st.page > 1 {
-		st.pager.PrevURL = st.pageURL(st.page - 1)
-	}
-	if st.page < pages {
-		st.pager.NextURL = st.pageURL(st.page + 1)
-	}
-	filter := func(label, f, dot string) views.Filter {
-		u := base
-		if f != "" {
-			u += "?show=" + f
-		}
-		return views.Filter{Label: label, URL: u, Count: counts[f], Current: f == show, Dot: dot}
-	}
-	st.filters = []views.Filter{filter("All", "", ""), filter("Real drops", "drops", "green"), filter("Store sales", "sales", "amber")}
-	return st, true
+	h.Heading = heading
+	h.Lede = fmt.Sprintf(k.lede, st.total)
+	h.Currency = "Prices in " + currencyName(m.Currency)
+	p.Strip = strip(m, k, st.cat)
+	p = chrome(r, p, base)
+	s.render(w, r, http.StatusOK, views.MarketHome(p, views.Listing{Hero: h, Deals: st.deals}))
 }
 
 // cards turns one page of ListCoffees into listing rows, with one history
@@ -408,17 +360,24 @@ func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.L
 	for _, h := range hist {
 		history[h.OfferID] = append(history[h.OfferID], pricePoint{At: h.SeenAt.Time, Minor: h.PriceMinor})
 	}
+	watched, compared := picks(ctx)
 	now := time.Now()
 	cards := make([]views.Card, 0, len(rows))
 	for _, c := range rows {
 		card := views.Card{
 			URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
-			Size: c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
+			RoasterURL: "/" + m.Code + "/brands/" + c.RoasterSlug,
+			Size:       c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
 			PerUnit: k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency),
 			BuyURL:  fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
-			Chart:   sparkline(history[c.OfferID], now, 160, 44, c.Title+" price history"),
-			DetailChart: historyChart(history[c.OfferID], now, c.Usual, c.Currency,
-				c.Title+" price history", strconv.FormatInt(c.OfferID, 10)),
+			Chart:   sparkArea(history[c.OfferID], now, 180, 48, c.Title+" price history"),
+			StoreNote: k.labels.StoreNote,
+			Ref:       m.Code + "/" + k.segment + "/" + c.Slug,
+		}
+		card.Watched, card.Compared = watched[card.Ref], slices.Contains(compared, card.Ref)
+		card.WatchURL, card.CompareURL = pickLinks(ctx, card.Ref)
+		if c.LastRead.Valid {
+			card.Checked = checked(c.LastRead.Time, now)
 		}
 		if c.Usual > 0 {
 			card.Usual = money(c.Usual, c.Currency)
@@ -429,16 +388,22 @@ func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.L
 			TrackedSince: c.TrackedSince.Time, LowestTracked: c.LowestTracked, OwnPrice: c.OwnPrice}
 		card.Lower = c.PriceMinor < c.Usual && !sum.RateOnly()
 		card.RealDrop = sum.DropPercent()
+		if card.Lower && card.RealDrop > 0 {
+			card.Saved = money(c.Usual-c.PriceMinor, c.Currency)
+		}
 		if since, ok := sum.LowestSince(now); ok {
-			card.LowestSince = since.UTC().Format("Jan 2, 2006")
+			card.LowestSince = since.UTC().Format("Jan 2")
 		} else {
 			card.LowestIn30 = sum.LowestIn30Days()
 		}
 		if c.ImageUrl != nil {
-			card.ImageURL = cdnImage(*c.ImageUrl, 240) // a 120 px image well, sharp on 2x screens
+			card.ImageURL = cdnImage(*c.ImageUrl, 240) // a 112 px image well, sharp on 2x screens
 		}
 		if c.CompareAtMinor != nil {
 			card.StoreWas = money(*c.CompareAtMinor, c.Currency)
+			if was := *c.CompareAtMinor; was > c.PriceMinor {
+				card.StorePercent = int((was - c.PriceMinor) * 100 / was)
+			}
 		}
 		card.Reading = reading(sum, now, c.CompareAtMinor, c.Currency, orEmpty(c.StoreCurrency))
 		cards = append(cards, card)
@@ -608,7 +573,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 	for i, o := range rows {
 		buy := fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID)
 		ov := views.Offer{
-			Size: o.SizeLabel, Price: money(o.PriceMinor, o.Currency),
+			Size: o.SizeLabel, Price: money(o.PriceMinor, o.Currency), Amount: decimal(o.PriceMinor), Grams: o.WeightGrams,
 			PerUnit: k.perUnit(o.PriceMinor, o.WeightGrams, o.Currency), Available: o.Available, BuyURL: buy,
 		}
 		if o.CompareAtMinor != nil {
@@ -708,6 +673,12 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		paths[code] = "/" + code + "/" + k.segment + "/" + c.Slug
 	}
 	p = s.inMarkets(p, m, k, paths, paths[market.US.Code])
+	view.Ref = m.Code + "/" + k.segment + "/" + c.Slug
+	watched, compared := picks(r.Context())
+	view.Watched, view.Compared = watched[view.Ref], slices.Contains(compared, view.Ref)
+	view.WatchURL, view.CompareURL = pickLinks(r.Context(), view.Ref)
+	view.Kind = k.name
+	p = chrome(r, p, "/"+m.Code+"/"+k.listPath)
 	s.render(w, r, http.StatusOK, views.CoffeePage(p, view))
 }
 
@@ -738,7 +709,8 @@ type thing struct {
 
 func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "User-agent: *\nDisallow: /internal/\n\nSitemap: %s/sitemap.xml\n", s.SiteURL)
+	// The theme, watchlist and comparison switches are personal links, not pages.
+	fmt.Fprintf(w, "User-agent: *\nDisallow: /internal/\nDisallow: /theme/\nDisallow: /watchlist\nDisallow: /compare\n\nSitemap: %s/sitemap.xml\n", s.SiteURL)
 }
 
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
@@ -753,6 +725,13 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(&b, "<url><loc>%s/%s/%s</loc></url>\n", s.SiteURL, m.Code, k.listPath)
 		}
 		fmt.Fprintf(&b, "<url><loc>%s/%s/brands/</loc></url>\n", s.SiteURL, m.Code)
+		fmt.Fprintf(&b, "<url><loc>%s/%s/categories/</loc></url>\n", s.SiteURL, m.Code)
+		// A category alone is a page of its own (see listPage).
+		for _, k := range kinds {
+			for _, c := range k.categories {
+				fmt.Fprintf(&b, "<url><loc>%s/%s/%s?cat=%s</loc></url>\n", s.SiteURL, m.Code, k.listPath, c.slug)
+			}
+		}
 		brands, err := s.Q.ListBrands(r.Context(), m.Code)
 		if err != nil {
 			s.fail(w, r, err)
@@ -771,7 +750,15 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 				s.SiteURL, m.Code, segment[c.Kind], c.Slug, c.LastSeen.Time.UTC().Format("2006-01-02"))
 		}
 	}
-	for _, g := range []string{"/guides/", "/guides/coffee-and-health", "/guides/coffee-history"} {
+	pages := []string{"/guides/", "/guides/coffee-and-health", "/guides/coffee-history", "/calculators/",
+		"/which-coffee", "/black-friday", "/cheapest-coffee"}
+	for _, c := range calculatorList {
+		pages = append(pages, "/calculators/"+c.slug)
+	}
+	for _, slug := range infoOrder {
+		pages = append(pages, "/"+slug)
+	}
+	for _, g := range pages {
 		fmt.Fprintf(&b, "<url><loc>%s%s</loc></url>\n", s.SiteURL, g)
 	}
 	b.WriteString("</urlset>\n")
@@ -822,7 +809,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
-	p := views.Page{Title: "Page not found — CoffeeProof", Lang: "en", NoIndex: true}
+	p := chrome(r, views.Page{Title: "Page not found — CoffeeProof", Lang: "en", NoIndex: true, Nav: nav(market.US, "")}, "/en-us/")
 	s.render(w, r, http.StatusNotFound, views.NotFound(p, "/"))
 }
 
@@ -833,7 +820,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if status == http.StatusOK {
+	// The theme, the watchlist and the comparison live in cookies: a cached
+	// page must not be reused for another set of them.
+	w.Header().Add("Vary", "Cookie")
+	if status == http.StatusOK && w.Header().Get("Cache-Control") == "" {
 		w.Header().Set("Cache-Control", "public, max-age=300")
 	}
 	w.WriteHeader(status)

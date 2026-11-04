@@ -139,6 +139,8 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Signature Blend Ground Coffee Packets 40 Count", ProductType: "Ground", Variants: []Variant{{Title: "40 Count - 2.5 oz. Packet", Price: "84.57", Available: true}}},
 		{Title: "Military Match Breakfast Blend Ground Coffee", ProductType: "Military Match", Variants: []Variant{{Title: "12 oz. | 8-pack", Price: "42.96", Available: true}}},
 		{Title: "Lactose Free Coffee Creamer", Variants: []Variant{{Title: "11 oz.", Price: "3.29", Available: true}}},
+		// Coaltown's sugar topped the price-per-kg order (4 Nov 2026).
+		{Title: "Coaltown Panela Sugar 1kg", Variants: []Variant{{Title: "Default Title", Price: "9.00", Available: true}}},
 		{Title: "Fraction (Half-Caff - WS)", Tags: []string{"Blends", "wholesale", "wholesale-only"}, Variants: []Variant{{Title: "2lb", Price: "273.00", Available: true}}},
 		{Title: "Elefante Extended Fermentation", Variants: []Variant{
 			{Title: "12 oz", Price: "0.00", Available: true},

@@ -87,14 +87,18 @@ JOIN roasters r ON r.id = c.roaster_id
 WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = $2
   AND ($3::text = '' OR ($3 = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR ($3 = 'sales' AND s.latest_compare_at IS NOT NULL))
   AND ($4::bigint = 0 OR r.id = $4) AND ($5::text = '' OR c.title ~* $5)
+  AND ($6::text = '' OR c.title !~* $6)
+  AND ($7::text = '' OR (c.title || ' ' || r.name) ~* $7)
 `
 
 type CountCoffeesParams struct {
-	Market  string
-	Kind    string
-	Show    string
-	Roaster int64
-	Title   string
+	Market   string
+	Kind     string
+	Show     string
+	Roaster  int64
+	Title    string
+	TitleNot string
+	Search   string
 }
 
 func (q *Queries) CountCoffees(ctx context.Context, arg CountCoffeesParams) (int64, error) {
@@ -104,6 +108,8 @@ func (q *Queries) CountCoffees(ctx context.Context, arg CountCoffeesParams) (int
 		arg.Show,
 		arg.Roaster,
 		arg.Title,
+		arg.TitleNot,
+		arg.Search,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -181,14 +187,15 @@ func (q *Queries) ListActiveRoasters(ctx context.Context) ([]ListActiveRoastersR
 const listCoffees = `-- name: ListCoffees :many
 SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams, x.currency,
        x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked, x.offer_id,
-       x.handle, x.roaster_url, x.variant_id, x.own_price, x.store_currency
+       x.handle, x.roaster_url, x.variant_id, x.own_price, x.store_currency, x.roaster_slug, x.last_read
 FROM (
     SELECT DISTINCT ON (c.id)
         c.slug, c.title, c.image_url, r.name AS roaster_name, o.id AS offer_id,
         c.handle, r.base_url AS roaster_url, o.variant_id,
         o.size_label, o.weight_grams, o.currency,
         s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
-        s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.own_price, r.currency AS store_currency
+        s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.own_price, r.currency AS store_currency,
+        r.slug AS roaster_slug, r.last_read_at AS last_read, c.created_at
     FROM coffees c
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
@@ -196,13 +203,25 @@ FROM (
     WHERE s.latest_available AND r.kind = $2
       AND ($3::text = '' OR ($3 = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR ($3 = 'sales' AND s.latest_compare_at IS NOT NULL))
       AND ($6::bigint = 0 OR r.id = $6) AND ($7::text = '' OR c.title ~* $7)
+      AND ($8::text = '' OR c.title !~* $8)
+      AND ($9::text = '' OR (c.title || ' ' || r.name) ~* $9)
     -- The size a row shows: a real drop first, then a store sale, then the
     -- smallest bag, so a coffee whose 1 kg bag dropped isn't listed by its
     -- unchanged 250 g bag and sorted among the full prices.
     ORDER BY c.id, (s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) DESC, (s.latest_compare_at IS NOT NULL) DESC, o.weight_grams
 ) x
-ORDER BY (x.usual > x.price_minor AND x.own_price IN ('', 'dropped')) DESC,
+ORDER BY CASE WHEN $10::text = 'price_asc' THEN x.price_minor END ASC,
+         CASE WHEN $10 = 'price_desc' THEN x.price_minor END DESC,
+         CASE WHEN $10 = 'unit_asc' THEN x.price_minor::float8 / NULLIF(x.weight_grams, 0) END ASC NULLS LAST,
+         CASE WHEN $10 = 'newest' THEN x.created_at END DESC,
+         CASE WHEN $10 = 'oldest' THEN x.created_at END ASC,
+         CASE WHEN $10 = 'name_asc' THEN x.title END ASC,
+         CASE WHEN $10 = 'name_desc' THEN x.title END DESC,
+         CASE WHEN $3 = 'sales' AND x.compare_at_minor > x.price_minor THEN (x.compare_at_minor - x.price_minor) * 100 / x.compare_at_minor END DESC NULLS LAST,
+         (x.usual > x.price_minor AND x.own_price IN ('', 'dropped')) DESC,
          (CASE WHEN x.usual > x.price_minor AND x.own_price IN ('', 'dropped') THEN (x.usual - x.price_minor) * 100 / x.usual ELSE 0 END) DESC,
+         (x.compare_at_minor > x.price_minor) DESC NULLS LAST,
+         (CASE WHEN x.compare_at_minor > x.price_minor THEN (x.compare_at_minor - x.price_minor) * 100 / x.compare_at_minor ELSE 0 END) DESC,
          x.roaster_name, x.title, x.slug
 LIMIT $5 OFFSET $4
 `
@@ -215,6 +234,9 @@ type ListCoffeesParams struct {
 	PageSize int32
 	Roaster  int64
 	Title    string
+	TitleNot string
+	Search   string
+	Sort     string
 }
 
 type ListCoffeesRow struct {
@@ -237,6 +259,8 @@ type ListCoffeesRow struct {
 	VariantID      int64
 	OwnPrice       string
 	StoreCurrency  *string
+	RoasterSlug    string
+	LastRead       pgtype.Timestamptz
 }
 
 // Market listing: one card per coffee IN STOCK, showing its smallest bag
@@ -259,6 +283,9 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 		arg.PageSize,
 		arg.Roaster,
 		arg.Title,
+		arg.TitleNot,
+		arg.Search,
+		arg.Sort,
 	)
 	if err != nil {
 		return nil, err
@@ -287,6 +314,8 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 			&i.VariantID,
 			&i.OwnPrice,
 			&i.StoreCurrency,
+			&i.RoasterSlug,
+			&i.LastRead,
 		); err != nil {
 			return nil, err
 		}

@@ -20,8 +20,33 @@ type pricePoint struct {
 // The SVG carries only numbers we format ourselves, so it is safe to emit
 // as raw HTML.
 func sparkline(points []pricePoint, now time.Time, width, height int, label string) string {
-	if len(points) < 2 {
+	d, _, ok := stepPath(points, now, width, height)
+	if !ok {
 		return ""
+	}
+	return fmt.Sprintf(`<svg class="spark" viewBox="0 0 %d %d" width="%d" height="%d" role="img" aria-label="%s">`+
+		`<path d="%s" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`,
+		width, height, width, height, escapeAttr(label), d)
+}
+
+// sparkArea is sparkline with the area under the line tinted, as the
+// sister sites draw their small charts; the same "" rule.
+func sparkArea(points []pricePoint, now time.Time, width, height int, label string) string {
+	d, x0, ok := stepPath(points, now, width, height)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf(`<svg class="spark spark-area" viewBox="0 0 %d %d" width="%d" height="%d" role="img" aria-label="%s">`+
+		`<path d="%s V%d H%.1f Z" fill="currentColor" fill-opacity=".13" stroke="none"/>`+
+		`<path d="%s" fill="none" stroke="currentColor" stroke-width="2"/></svg>`,
+		width, height, width, height, escapeAttr(label), d, height, x0, d)
+}
+
+// stepPath is the step line's SVG path and its first x; ok is false with
+// fewer than two points.
+func stepPath(points []pricePoint, now time.Time, width, height int) (d string, x0 float64, ok bool) {
+	if len(points) < 2 {
+		return "", 0, false
 	}
 	start, end := points[0].At, now
 	if !end.After(start) {
@@ -48,9 +73,7 @@ func sparkline(points []pricePoint, now time.Time, width, height int, label stri
 		fmt.Fprintf(&b, "H%.1f V%.1f", x(points[i].At), y(points[i].Minor))
 	}
 	fmt.Fprintf(&b, "H%.1f", x(end))
-	return fmt.Sprintf(`<svg class="spark" viewBox="0 0 %d %d" width="%d" height="%d" role="img" aria-label="%s">`+
-		`<path d="%s" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`,
-		width, height, width, height, escapeAttr(label), b.String())
+	return b.String(), x(points[0].At), true
 }
 
 // historyChart is the bigger chart of a product page and of a listing's quick

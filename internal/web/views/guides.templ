@@ -27,6 +27,29 @@ type Caffeine struct {
 	Message    string
 }
 
+// CaffeineCalc is the caffeine calculator: in the health guide and on its
+// own page among the calculators. A GET form, worked out by the server.
+templ CaffeineCalc(c Caffeine, action string) {
+	<form class="calc" method="get" action={ templ.SafeURL(action) }>
+		<div class="card calc-drinks">
+			for _, d := range c.Drinks {
+				<label class="drink">
+					<span class="drink-name"><b>{ d.Name }</b><span>{ fmt.Sprintf("%s, about %d mg", d.Serving, d.Mg) }</span></span>
+					<input type="number" name={ d.Key } min="0" max="10" step="1" value={ fmt.Sprint(d.Count) } inputmode="numeric"/>
+				</label>
+			}
+			<button class="btn btn-primary" type="submit">Add it up</button>
+		</div>
+		<div class={ "card", "calc-total", "calc-" + c.Level } aria-live="polite">
+			<p class="stat-label">Your day</p>
+			<p class="calc-mg"><b>{ fmt.Sprint(c.Total) }</b> mg</p>
+			<span class="bar" aria-hidden="true"><span class={ "bar-fill", "bar-" + c.Level } style={ fmt.Sprintf("width:%d%%", c.BarPercent) }></span></span>
+			<span class="bar-scale" aria-hidden="true"><span>0</span><span>200 mg</span><span>400 mg</span><span>600</span></span>
+			<p class="calc-msg">{ c.Message }</p>
+		</div>
+	</form>
+}
+
 // Source is one entry of a guide's numbered source list.
 type Source struct {
 	Title, URL string
@@ -324,24 +347,7 @@ templ HealthGuide(p Page, c Caffeine) {
 				<section class="guide-section" id="calculator">
 					<h2>How much caffeine is in your day?</h2>
 					<p>Add the drinks you have on a normal day. Amounts are typical values from the Mayo Clinic; your cup can differ with the beans, the brew and the size. @ref(3)</p>
-					<form class="calc" method="get" action="/guides/coffee-and-health#calculator">
-						<div class="card calc-drinks">
-							for _, d := range c.Drinks {
-								<label class="drink">
-									<span class="drink-name"><b>{ d.Name }</b><span>{ fmt.Sprintf("%s, about %d mg", d.Serving, d.Mg) }</span></span>
-									<input type="number" name={ d.Key } min="0" max="10" step="1" value={ fmt.Sprint(d.Count) } inputmode="numeric"/>
-								</label>
-							}
-							<button class="btn btn-primary" type="submit">Add it up</button>
-						</div>
-						<div class={ "card", "calc-total", "calc-" + c.Level } aria-live="polite">
-							<p class="stat-label">Your day</p>
-							<p class="calc-mg"><b>{ fmt.Sprint(c.Total) }</b> mg</p>
-							<span class="bar" aria-hidden="true"><span class={ "bar-fill", "bar-" + c.Level } style={ fmt.Sprintf("width:%d%%", c.BarPercent) }></span></span>
-							<span class="bar-scale" aria-hidden="true"><span>0</span><span>200 mg</span><span>400 mg</span><span>600</span></span>
-							<p class="calc-msg">{ c.Message }</p>
-						</div>
-					</form>
+					@CaffeineCalc(c, "/guides/coffee-and-health#calculator")
 				</section>
 				<section class="guide-section" id="the-good">
 					<h2>The good</h2>
@@ -483,11 +489,11 @@ templ HistoryGuide(p Page, today []Card, labels Labels) {
 						<p>The variety behind those auction records, on today's US list.</p>
 					</div>
 				</div>
-				<div class="rows">
+				<section class="deal-list" aria-label="Today's Gesha coffees">
 					for _, c := range today {
 						@productRow(c, labels)
 					}
-				</div>
+				</section>
 			</section>
 		}
 		<section class="section" id="sources">

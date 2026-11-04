@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
@@ -22,6 +23,7 @@ func (s *Server) guidesIndex(w http.ResponseWriter, r *http.Request) {
 		Canonical:   s.SiteURL + "/guides/",
 		Nav:         nav(market.US, "guides"),
 	}
+	p = chrome(r, p, "/en-us/")
 	s.render(w, r, http.StatusOK, views.GuidesIndex(p))
 }
 
@@ -49,8 +51,10 @@ var drinks = []views.Drink{
 // healthGuide works the caffeine calculator out on the server: it is a plain
 // GET form, so it works without script. With no answers yet it shows two
 // cups of brewed coffee, as the design does.
-func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+// caffeineFrom works the calculator out from its form: the health guide's
+// and the calculators' page share it. An empty form starts at two cups of
+// brewed coffee.
+func caffeineFrom(q url.Values) views.Caffeine {
 	c := views.Caffeine{}
 	for _, d := range drinks {
 		switch raw := q.Get(d.Key); {
@@ -72,6 +76,12 @@ func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
 		c.Level, c.Message = "amber", "Over 400 mg: more than the FDA and EFSA consider safe for most adults in a day."
 	}
 	c.BarPercent = min(100, c.Total*100/600)
+	return c
+}
+
+func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	c := caffeineFrom(q)
 	p := views.Page{
 		Title:       "Coffee and your health: what the research says — CoffeeProof",
 		Lang:        "en",
@@ -80,6 +90,7 @@ func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
 		NoIndex:     len(q) > 0, // a filled-in calculator is the same page
 		Nav:         nav(market.US, "guides"),
 	}
+	p = chrome(r, p, "/en-us/")
 	s.render(w, r, http.StatusOK, views.HealthGuide(p, c))
 }
 
@@ -106,5 +117,6 @@ func (s *Server) historyGuide(w http.ResponseWriter, r *http.Request) {
 		Canonical:   s.SiteURL + "/guides/coffee-history",
 		Nav:         nav(market.US, "guides"),
 	}
+	p = chrome(r, p, "/en-us/")
 	s.render(w, r, http.StatusOK, views.HistoryGuide(p, cards, coffeeKind.labels))
 }

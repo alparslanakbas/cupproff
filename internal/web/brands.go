@@ -51,6 +51,7 @@ func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 		paths[other.Code] = "/" + other.Code + "/brands/"
 	}
 	p = s.inMarkets(p, m, coffeeKind, paths, "")
+	p = chrome(r, p, "/"+m.Code+"/")
 	s.render(w, r, http.StatusOK, views.BrandsIndex(p, b))
 }
 
@@ -103,13 +104,13 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 		Description: fmt.Sprintf("%s in the %s: %s, %s today. Each discount is judged against our own 30-day price record.",
 			store.Name, m.Name, views.Amount(me.Coffees, k.name, k.name+"s"), views.Amount(me.Drops, "real price drop", "real price drops")),
 		Canonical: s.SiteURL + st.pageURL(st.page),
-		NoIndex:   st.show != "",
+		NoIndex:   st.filtered(),
 		Nav:       nav(m, "brands"),
 	}
 	// Like a listing: page 1 has a sibling in every market where the store
 	// has stock today; later pages and filtered views name only themselves.
 	paths := map[string]string{m.Code: st.pageURL(st.page)}
-	if st.page == 1 && st.show == "" {
+	if st.page == 1 && !st.filtered() {
 		markets, err := s.Q.BrandMarkets(r.Context(), store.ID)
 		if err != nil {
 			s.fail(w, r, err)
@@ -130,7 +131,7 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 		Market: m.Short, Kind: k.name, Noun: k.name + "s", StoreURL: store.BaseUrl,
 		Coffees: me.Coffees, Drops: me.Drops, Sales: me.Sales,
 		BestLabel: unit, Best: k.perUnit(me.BestPrice, me.BestGrams, m.Currency),
-		Filters: st.filters, Cards: st.cards, Pager: st.pager, Labels: k.labels, Others: others,
+		Deals: st.deals, Labels: k.labels, Others: others,
 		BrandsURL: "/" + m.Code + "/brands/",
 	}
 	if c := countryName(store.Country); c != "" {
@@ -148,6 +149,8 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 		v.About = append(v.About, views.Fact{Label: "Ships to", Value: views.Amount(int64(n), "country", "countries")})
 	}
 	v.About = append(v.About, views.Fact{Label: "Price checks", Value: "Every day"})
+	p.Query = st.q
+	p = chrome(r, p, "/"+m.Code+"/"+k.listPath)
 	s.render(w, r, http.StatusOK, views.BrandPage(p, v))
 }
 

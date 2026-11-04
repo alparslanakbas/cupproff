@@ -68,10 +68,12 @@ type Offer struct {
 // "sugar" alone can't be used ("Grandma's Sugar Cookie" is a coffee).
 // UK round (13 Oct 2026): matcha typed "Coffee" (Grind's refill pouches),
 // KeepCup/Huskee cups, Airscape canisters, milk jugs and pitchers.
+// Coaltown's "Panela Sugar 1kg" topped the price-per-kg order (4 Nov 2026);
+// the whole name, for the reason above.
 var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|kettles?|grinders?|drippers?|scales?|candles?|` +
 	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
 	`wholesale|recurring|installments?|monthly|(gift|discovery|experience) box(es)?|packs?|(travel|hot|cold|paper|coffee|camp) cups?|` +
-	`creamers?|granulated|matcha|keepcup|huskee|airscape|jugs?|pitchers?|` +
+	`creamers?|granulated|panela sugar|matcha|keepcup|huskee|airscape|jugs?|pitchers?|` +
 	// EU round (14 Oct 2026; stores write in German, French, Spanish, Finnish):
 	// subscriptions ("Abo 12 Monate", Finnish "vakiotilaus"), a public cupping
 	// event, gear sold by brand or by French name (moulin = grinder), VST

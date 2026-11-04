@@ -11,15 +11,33 @@ type Page struct {
 	Alternates  []Alternate
 	JSONLD      string // already marshalled with HTML escaping
 	NoIndex     bool
-	Nav         []NavLink // the market's sections; empty outside a market
+	Nav         []NavLink // the header's menu
 	Regions     []NavLink // the same page in the other markets, when it exists there
 	MarketNote  string    // what a buyer must know about this market's prices
+	Strip       []StripItem // the category strip under the band, on the lists
+
+	// Filled in from the request by the web package (chrome).
+	Theme        string    // "", "light" or "dark": "" follows the system
+	Themes       []NavLink // the theme control: light, dark, system
+	Watching     int       // products on the visitor's watchlist
+	Comparing    int       // products picked for comparison
+	ClearCompare string
+	Search       string // where the header's search goes
+	Query        string // what it holds
 }
 
-// NavLink is one section of a market (Coffee, Tea) in the header.
+// NavLink is one link of a menu or a switch.
 type NavLink struct {
 	Name    string
 	URL     string
+	Current bool
+}
+
+// StripItem is one entry of the category strip.
+type StripItem struct {
+	Label   string
+	URL     string
+	Icon    string
 	Current bool
 }
 
@@ -44,9 +62,63 @@ func currentRegion(regions []NavLink) string {
 	return "Region"
 }
 
+// tabs are the phone's tab bar: the deals, then the menu's sections.
+func tabs(nav []NavLink) []StripItem {
+	items := []StripItem{{Label: "Deals", URL: "/", Icon: "home"}}
+	icons := map[string]string{"Coffee": "cup", "Tea": "leaf", "Brands": "store", "Guides": "book"}
+	for _, n := range nav {
+		if icon, ok := icons[n.Name]; ok {
+			items = append(items, StripItem{Label: n.Name, URL: n.URL, Icon: icon, Current: n.Current})
+		}
+	}
+	return items
+}
+
+func themeTitle(name string) string {
+	switch name {
+	case "light":
+		return "Light theme"
+	case "dark":
+		return "Dark theme"
+	}
+	return "System theme"
+}
+
+func themeIcon(name string) string {
+	switch name {
+	case "light":
+		return "sun"
+	case "dark":
+		return "moon"
+	}
+	return "desktop"
+}
+
+func searchAction(p Page) string {
+	if p.Search != "" {
+		return p.Search
+	}
+	return "/en-us/"
+}
+
+// footerCategories are the footer's category links, on the US lists.
+var footerCategories = []NavLink{
+	{Name: "Single-origin coffee", URL: "/en-us/?cat=single-origin"}, {Name: "Coffee blends", URL: "/en-us/?cat=blends"},
+	{Name: "Espresso coffee", URL: "/en-us/?cat=espresso"}, {Name: "Decaf coffee", URL: "/en-us/?cat=decaf"},
+	{Name: "Black tea", URL: "/en-us/tea/?cat=black"}, {Name: "Green tea", URL: "/en-us/tea/?cat=green"},
+	{Name: "Oolong tea", URL: "/en-us/tea/?cat=oolong"}, {Name: "White tea", URL: "/en-us/tea/?cat=white"},
+	{Name: "Pu-erh tea", URL: "/en-us/tea/?cat=pu-erh"}, {Name: "Matcha", URL: "/en-us/tea/?cat=matcha"},
+	{Name: "Chai", URL: "/en-us/tea/?cat=chai"}, {Name: "Herbal tea", URL: "/en-us/tea/?cat=herbal"},
+}
+
 templ Layout(p Page, hero templ.Component) {
 	<!DOCTYPE html>
-	<html lang={ p.Lang }>
+	<html
+		lang={ p.Lang }
+		if p.Theme != "" {
+			data-theme={ p.Theme }
+		}
+	>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -77,14 +149,21 @@ templ Layout(p Page, hero templ.Component) {
 			// The brand band: the header and the page's heading, dark in both
 			// themes as on the sister sites.
 			<div class="hero-zone">
-				<header class="site-header">
-					<div class="wrap header-row">
+				<header class="topbar">
+					<div class="wrap topbar-row">
 						<a class="logo" href="/">
 							@logoMark()
 							<span>CoffeeProof</span>
 						</a>
+						<form class="search" role="search" method="get" action={ templ.SafeURL(searchAction(p)) }>
+							<label>
+								<span class="sr-only">Search coffees, teas or stores</span>
+								@icon("search")
+								<input type="search" name="q" value={ p.Query } maxlength="80" placeholder="Search coffees, teas or stores"/>
+							</label>
+						</form>
 						if len(p.Nav) > 0 {
-							<nav class="mainnav" aria-label="Sections">
+							<nav class="mainnav" aria-label="Main menu">
 								for _, n := range p.Nav {
 									if n.Current {
 										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
@@ -94,11 +173,16 @@ templ Layout(p Page, hero templ.Component) {
 								}
 							</nav>
 						}
+						<a class="hdr-btn quiz-btn" href="/which-coffee">
+							@icon("compass")
+							<span>Quiz</span>
+						</a>
 						if len(p.Regions) > 0 {
 							<details class="region">
 								<summary>
-									@iconGlobe()
+									@icon("globe")
 									<span>{ currentRegion(p.Regions) }</span>
+									@icon("caret-down")
 								</summary>
 								<nav class="region-menu" aria-label="Region">
 									for _, n := range p.Regions {
@@ -111,52 +195,109 @@ templ Layout(p Page, hero templ.Component) {
 								</nav>
 							</details>
 						}
+						<a class="hdr-btn watch-btn" href="/watchlist">
+							@icon("bookmark")
+							<span>Watchlist</span>
+							if p.Watching > 0 {
+								<b class="count-pill">{ fmt.Sprint(p.Watching) }</b>
+							}
+						</a>
+						if len(p.Themes) > 0 {
+							<nav class="theme" aria-label="Theme">
+								for _, t := range p.Themes {
+									<a
+										href={ templ.SafeURL(t.URL) }
+										rel="nofollow"
+										title={ themeTitle(t.Name) }
+										class={ "theme-" + t.Name }
+										if t.Current {
+											aria-current="true"
+										}
+									>
+										@icon(themeIcon(t.Name))
+										<span class="sr-only">{ themeTitle(t.Name) }</span>
+									</a>
+								}
+							</nav>
+						}
 					</div>
 				</header>
 				@hero
 			</div>
-			<main class="wrap">
+			if len(p.Strip) > 0 {
+				@categoryStrip(p.Strip)
+			}
+			<main class="wrap" id="main">
 				{ children... }
 			</main>
+			if p.Comparing > 0 {
+				<div class="compare-bar" role="region" aria-label="Comparison">
+					<div class="wrap compare-row">
+						@icon("scales")
+						<span>{ fmt.Sprintf("%d of 4 products picked to compare", p.Comparing) }</span>
+						<a class="btn btn-primary" href="/compare">Compare now</a>
+						<a class="compare-clear" href={ templ.SafeURL(p.ClearCompare) } rel="nofollow">Clear</a>
+					</div>
+				</div>
+			}
 			<footer class="site-footer">
-				<div class="wrap footer-grid">
-					<div class="footer-about">
+				<div class="wrap footer-top">
+					<div class="footer-brand">
 						<a class="logo" href="/">
 							@logoMark()
 							<span>CoffeeProof</span>
 						</a>
 						<p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own "was" price.</p>
+						<a class="footer-mail" href="/contact">
+							@icon("mail")
+							Contact us
+						</a>
 					</div>
 					<div>
-						<h2>Coffee</h2>
-						<ul>
-							<li><a href="/en-us/">US coffee</a></li>
-							<li><a href="/en-gb/">UK coffee</a></li>
-							<li><a href="/en-eu/">EU coffee</a></li>
-						</ul>
+						<h2>Explore</h2>
+						<nav class="footer-nav">
+							<a href="/">Today's deals</a>
+							<a href="/en-us/categories/">All categories</a>
+							<a href="/en-us/brands/">Roasters and tea houses</a>
+							<a href="/guides/">Coffee guides</a>
+							<a href="/glossary">Coffee and tea glossary</a>
+							<a href="/calculators/">Calculators</a>
+							<a href="/which-coffee">Which coffee?</a>
+							<a href="/black-friday">Black Friday deals check</a>
+							<a href="/cheapest-coffee">Cheapest coffee per kg</a>
+						</nav>
 					</div>
 					<div>
-						<h2>Tea</h2>
-						<ul>
-							<li><a href="/en-us/tea/">US tea</a></li>
-							<li><a href="/en-gb/tea/">UK tea</a></li>
-							<li><a href="/en-eu/tea/">EU tea</a></li>
-						</ul>
+						<h2>Transparency</h2>
+						<nav class="footer-nav">
+							<a href="/how-it-works">How it works</a>
+							<a href="/about">About</a>
+							<a href="/contact">Contact</a>
+							<a href="/privacy">Privacy policy</a>
+							<a href="/cookies">Cookie policy</a>
+							<a href="/terms">Terms of use</a>
+							<a href="/watchlist">My watchlist</a>
+						</nav>
 					</div>
 					<div>
-						<h2>Read</h2>
-						<ul>
-							<li><a href="/en-us/brands/">Brands</a></li>
-							<li><a href="/guides/">Coffee guides</a></li>
-							<li><a href="/guides/coffee-and-health#calculator">Caffeine calculator</a></li>
-						</ul>
-					</div>
-					<div class="footer-note">
 						<h2>How prices are read</h2>
 						if p.MarketNote != "" {
 							<p>{ p.MarketNote }</p>
 						}
 						<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
+						<nav class="footer-regions" aria-label="Regions">
+							<a href="/en-us/">US</a>
+							<a href="/en-gb/">UK</a>
+							<a href="/en-eu/">EU</a>
+						</nav>
+					</div>
+				</div>
+				<div class="wrap footer-links">
+					<h2>Popular categories</h2>
+					<div>
+						for _, c := range footerCategories {
+							<a href={ templ.SafeURL(c.URL) }>{ c.Name }</a>
+						}
 					</div>
 				</div>
 				<div class="wrap footer-bottom">
@@ -164,8 +305,45 @@ templ Layout(p Page, hero templ.Component) {
 					<span>Prices checked daily.</span>
 				</div>
 			</footer>
+			if len(p.Nav) > 0 {
+				<nav class="tabbar" aria-label="Sections">
+					for _, t := range tabs(p.Nav) {
+						<a
+							href={ templ.SafeURL(t.URL) }
+							if t.Current {
+								aria-current="page"
+							}
+						>
+							@icon(t.Icon)
+							<span>{ t.Label }</span>
+						</a>
+					}
+				</nav>
+			}
 		</body>
 	</html>
+}
+
+// categoryStrip is the sister sites' strip of round icons under the band.
+templ categoryStrip(items []StripItem) {
+	<nav class="cat-strip" aria-label="Categories">
+		<div class="wrap cat-strip-row">
+			for _, it := range items {
+				<a
+					class="cat-link"
+					href={ templ.SafeURL(it.URL) }
+					if it.Current {
+						aria-current="true"
+					}
+				>
+					<span class="cat-icon">
+						@icon(it.Icon)
+					</span>
+					{ it.Label }
+				</a>
+			}
+		</div>
+	</nav>
 }
 
 templ logoMark() {
@@ -179,25 +357,92 @@ templ logoMark() {
 }
 
 templ iconGlobe() {
-	<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-		<circle cx="12" cy="12" r="9"></circle>
-		<path d="M3 12h18M12 3c2.5 2.8 2.5 15.2 0 18M12 3c-2.5 2.8-2.5 15.2 0 18"></path>
-	</svg>
+	@icon("globe")
 }
 
-// Amount writes "1 tea" or "2,956 teas".
-func Amount(n int64, one, many string) string {
-	if n == 1 {
-		return "1 " + one
+// icon draws one of the site's line icons (24 px grid, the colour of the
+// text). Unknown names draw nothing.
+templ icon(name string) {
+	switch name {
+		case "search":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.5 4.5"></path></svg>
+		case "compass":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5l-2 5-5 2 2-5z"></path></svg>
+		case "bookmark":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"></path></svg>
+		case "bookmark-fill":
+			<svg class="ic ic-fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"></path></svg>
+		case "sun":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"></path></svg>
+		case "moon":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"></path></svg>
+		case "desktop":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>
+		case "globe":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.8 2.5 15.2 0 18M12 3c-2.5 2.8-2.5 15.2 0 18"></path></svg>
+		case "caret-down":
+			<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+		case "caret-left":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+		case "caret-right":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+		case "cup":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h11v5a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5z"></path><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"></path><path d="M9 3c-.6 1 .6 2 0 3M12.5 3c-.6 1 .6 2 0 3"></path></svg>
+		case "leaf":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-8 5-14 15-15-1 10-7 15-15 15z"></path><path d="M5 19l8-8"></path></svg>
+		case "layers":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"></path><path d="M3 13l9 5 9-5"></path></svg>
+		case "bolt":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5L4.5 14H11l-1 7.5L18.5 10H12z"></path></svg>
+		case "drop":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path></svg>
+		case "sprout":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-8"></path><path d="M12 13c0-5 3-8 8-8 0 5-3 8-8 8z"></path><path d="M12 15c0-3-2-5-6-5 0 3 2 5 6 5z"></path></svg>
+		case "ring":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+		case "asterisk":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"></path></svg>
+		case "disc":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 3v3M21 12h-3"></path></svg>
+		case "bowl":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12h17a8.5 8.5 0 0 1-17 0z"></path><path d="M12 3v6M9 4l1.5 5M15 4l-1.5 5"></path></svg>
+		case "star":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6l-5.4 2.9 1.2-6-4.5-4.2 6.1-.7z"></path></svg>
+		case "flower":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="2.2"></circle><path d="M12 5.8c0-2 2.5-3 3.5-1.5S14.2 8 14.2 8M12 5.8c0-2-2.5-3-3.5-1.5S9.8 8 9.8 8M12 10.2c0 2 2.5 3 3.5 1.5S14.2 8 14.2 8M12 10.2c0 2-2.5 3-3.5 1.5S9.8 8 9.8 8"></path><path d="M12 10.5V21M12 17c-2-2-4.5-2-6-1 1.5 2 4 2 6 1z"></path></svg>
+		case "shield":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"></path><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>
+		case "seal":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.3 1.7 2.8-.2.9 2.7 2.3 1.6-.9 2.7.9 2.7-2.3 1.6-.9 2.7-2.8-.2L12 21.2l-2.3-1.7-2.8.2-.9-2.7-2.3-1.6.9-2.7-.9-2.7 2.3-1.6.9-2.7 2.8.2z"></path><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>
+		case "arrow-right":
+			<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+		case "external":
+			<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"></path></svg>
+		case "x":
+			<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+		case "funnel":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h17l-6.5 7.5V19l-4 2v-8.5z"></path></svg>
+		case "scales":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M7 20h10M5 7h14M5 7l-3 6a3 3 0 0 0 6 0zM19 7l-3 6a3 3 0 0 0 6 0z"></path></svg>
+		case "check":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+		case "home":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5.5v-6h-5v6H4z"></path></svg>
+		case "store":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5L5.5 4h13L20 9.5M4 9.5h16v.5a3 3 0 0 1-5.3 1.9A3 3 0 0 1 12 13a3 3 0 0 1-2.7-1.1A3 3 0 0 1 4 10zM5.5 12.5V20h13v-7.5M10 20v-4.5h4V20"></path></svg>
+		case "book":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"></path></svg>
+		case "calculator":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 7h8M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01M8.5 15h.01M12 15h.01M15.5 15h.01M8.5 18.5h.01M12 18.5h.01M15.5 18.5h.01"></path></svg>
+		case "mail":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3.5 6.5l8.5 6.5 8.5-6.5"></path></svg>
+		case "warning":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5M12 16.5h.01"></path></svg>
+		case "tag":
+			<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8z"></path><circle cx="7.5" cy="8.5" r="1.3"></circle></svg>
+		case "down":
+			<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v12M6 12l6 6 6-6M5 21h14"></path></svg>
+		case "grid":
+			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg>
 	}
-	return count(n, many)
-}
-
-// count writes "2,956 teas": thousands grouped, the way the stores write prices.
-func count(n int64, noun string) string {
-	s := fmt.Sprint(n)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	return s + " " + noun
 }

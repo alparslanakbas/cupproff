@@ -42,14 +42,15 @@ ON CONFLICT (offer_id, seen_at) DO NOTHING;
 -- name: ListCoffees :many
 SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams, x.currency,
        x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked, x.offer_id,
-       x.handle, x.roaster_url, x.variant_id, x.own_price, x.store_currency
+       x.handle, x.roaster_url, x.variant_id, x.own_price, x.store_currency, x.roaster_slug, x.last_read
 FROM (
     SELECT DISTINCT ON (c.id)
         c.slug, c.title, c.image_url, r.name AS roaster_name, o.id AS offer_id,
         c.handle, r.base_url AS roaster_url, o.variant_id,
         o.size_label, o.weight_grams, o.currency,
         s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
-        s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.own_price, r.currency AS store_currency
+        s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.own_price, r.currency AS store_currency,
+        r.slug AS roaster_slug, r.last_read_at AS last_read, c.created_at
     FROM coffees c
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
@@ -57,19 +58,37 @@ FROM (
     WHERE s.latest_available AND r.kind = @kind
       AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL))
       AND (@roaster::bigint = 0 OR r.id = @roaster) AND (@title::text = '' OR c.title ~* @title)
+      AND (@title_not::text = '' OR c.title !~* @title_not)
+      AND (@search::text = '' OR (c.title || ' ' || r.name) ~* @search)
     -- The size a row shows: a real drop first, then a store sale, then the
     -- smallest bag, so a coffee whose 1 kg bag dropped isn't listed by its
     -- unchanged 250 g bag and sorted among the full prices.
     ORDER BY c.id, (s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) DESC, (s.latest_compare_at IS NOT NULL) DESC, o.weight_grams
 ) x
--- Real drops first, deepest first (the same arithmetic as pricing.DropPercent:
--- below the usual price, rounded down; never a converted price that only
--- followed the exchange rate), then grouped by store, like a café
--- menu lists its producers. @show narrows the list to real drops or to the
--- store's own sales (empty = everything); @roaster to one store (0 = all),
--- @title to titles matching a regular expression (empty = all).
-ORDER BY (x.usual > x.price_minor AND x.own_price IN ('', 'dropped')) DESC,
+-- @sort picks the order (the sister sites' choices); every order ends with
+-- the default, "biggest drop": real drops first, deepest first (the same
+-- arithmetic as pricing.DropPercent: below the usual price, rounded down;
+-- never a converted price that only followed the exchange rate), then the
+-- store's own sales, deepest first, then grouped by store, like a café menu
+-- lists its producers. @show narrows the list to real drops or to the
+-- store's own sales (empty = everything); @roaster to one store (0 = all);
+-- @title and @title_not to titles that match and don't match a regular
+-- expression (a category; empty = all); @search to products whose title and
+-- store name match a regular expression.
+ORDER BY CASE WHEN @sort::text = 'price_asc' THEN x.price_minor END ASC,
+         CASE WHEN @sort = 'price_desc' THEN x.price_minor END DESC,
+         CASE WHEN @sort = 'unit_asc' THEN x.price_minor::float8 / NULLIF(x.weight_grams, 0) END ASC NULLS LAST,
+         CASE WHEN @sort = 'newest' THEN x.created_at END DESC,
+         CASE WHEN @sort = 'oldest' THEN x.created_at END ASC,
+         CASE WHEN @sort = 'name_asc' THEN x.title END ASC,
+         CASE WHEN @sort = 'name_desc' THEN x.title END DESC,
+         -- the store sales view: the store's own discount first, as the
+         -- sister sites order it
+         CASE WHEN @show = 'sales' AND x.compare_at_minor > x.price_minor THEN (x.compare_at_minor - x.price_minor) * 100 / x.compare_at_minor END DESC NULLS LAST,
+         (x.usual > x.price_minor AND x.own_price IN ('', 'dropped')) DESC,
          (CASE WHEN x.usual > x.price_minor AND x.own_price IN ('', 'dropped') THEN (x.usual - x.price_minor) * 100 / x.usual ELSE 0 END) DESC,
+         (x.compare_at_minor > x.price_minor) DESC NULLS LAST,
+         (CASE WHEN x.compare_at_minor > x.price_minor THEN (x.compare_at_minor - x.price_minor) * 100 / x.compare_at_minor ELSE 0 END) DESC,
          x.roaster_name, x.title, x.slug
 LIMIT @page_size OFFSET @skip;
 
@@ -81,7 +100,9 @@ JOIN coffees c ON c.id = o.coffee_id
 JOIN roasters r ON r.id = c.roaster_id
 WHERE o.market = @market AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = @kind
   AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL))
-  AND (@roaster::bigint = 0 OR r.id = @roaster) AND (@title::text = '' OR c.title ~* @title);
+  AND (@roaster::bigint = 0 OR r.id = @roaster) AND (@title::text = '' OR c.title ~* @title)
+  AND (@title_not::text = '' OR c.title !~* @title_not)
+  AND (@search::text = '' OR (c.title || ' ' || r.name) ~* @search);
 
 -- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,

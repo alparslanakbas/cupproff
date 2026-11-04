@@ -1,0 +1,368 @@
+package views
+
+import "fmt"
+
+// CategoryCard is one tile of a card grid: a category, a calculator.
+type CategoryCard struct {
+	Label string
+	URL   string
+	Icon  string
+	Count string
+	About string
+}
+
+// CategoryGroup is a section's categories on the categories page.
+type CategoryGroup struct {
+	Name  string
+	URL   string
+	Icon  string
+	Count string
+	Items []CategoryCard
+}
+
+// BrewRatio is the brew ratio calculator, worked out by the server.
+type BrewRatio struct {
+	Coffee, Water, Ratio string
+	From                 string // "water" when the visitor gave the water
+	Ratios               []Option
+	Answer               string
+	Cups                 string
+	Problem              string
+}
+
+// CostPerCup is the cost per cup calculator, worked out by the server.
+type CostPerCup struct {
+	Price, Grams, Dose string
+	PerCup, Cups       string
+	PerKilo            string
+	Problem            string
+}
+
+// Quiz is the "which coffee?" quiz: the answers so far and the result.
+type Quiz struct {
+	Drink, Caffeine, Brew, Taste string
+	Result                       *QuizResult
+}
+
+// QuizResult is the quiz's answer: a category, why, and today's deals in it.
+type QuizResult struct {
+	Title   string
+	Why     string
+	URL     string
+	Count   int64
+	Cards   []Card
+	Labels  Labels
+	Markets []NavLink
+}
+
+// MarketCount is one market's real drops and store sales today.
+type MarketCount struct {
+	Market string
+	URL    string
+	Drops  int64
+	Sales  int64
+}
+
+// DealsBlock is a short list with a title and a link to the whole list.
+type DealsBlock struct {
+	Title  string
+	Cards  []Card
+	Labels Labels
+	URL    string
+	Count  int64
+	Show   string
+}
+
+// Categories is a market's category directory.
+templ Categories(p Page, market string, groups []CategoryGroup) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: market}, {Name: "Categories"}}, "All categories",
+		"Every coffee and tea category we follow, with what is in stock today. We sort products into categories by their names.")) {
+		for _, g := range groups {
+			<section class="cat-group">
+				<div class="section-head">
+					<h2>
+						<span class="cat-icon">
+							@icon(g.Icon)
+						</span>
+						{ g.Name }
+					</h2>
+					<a class="btn btn-ghost" href={ templ.SafeURL(g.URL) }>
+						{ "All " + lower(g.Name) + ", " + g.Count }
+						@icon("arrow-right")
+					</a>
+				</div>
+				@tileGrid(g.Items)
+			</section>
+		}
+	}
+}
+
+// tileGrid is a grid of icon cards.
+templ tileGrid(items []CategoryCard) {
+	<div class="tile-grid">
+		for _, it := range items {
+			<a class="tile-card" href={ templ.SafeURL(it.URL) }>
+				<span class="tile-head">
+					<span class="cat-icon">
+						@icon(it.Icon)
+					</span>
+					if it.Count != "" {
+						<span class="tile-count">{ it.Count }</span>
+					}
+				</span>
+				<span class="tile-title">{ it.Label }</span>
+				<span class="tile-about">{ it.About }</span>
+				<span class="tile-go">
+					Open
+					@icon("arrow-right")
+				</span>
+			</a>
+		}
+	</div>
+}
+
+// Calculators is the calculators' index.
+templ Calculators(p Page, cards []CategoryCard) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Calculators"}}, "Coffee calculators",
+		"Small tools for the coffee you buy and brew. They work without a script: the form sends your numbers and our server works them out.")) {
+		@tileGrid(cards)
+	}
+}
+
+templ calcCrumbs(name string) {
+	@crumbs([]NavLink{{Name: "Home", URL: "/"}, {Name: "Calculators", URL: "/calculators/"}, {Name: name}})
+}
+
+// CaffeinePage is the caffeine calculator on its own page.
+templ CaffeinePage(p Page, c Caffeine) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Calculators", URL: "/calculators/"}, {Name: "Caffeine"}},
+		"Caffeine calculator", "Add the drinks you have on a normal day. Amounts are typical values from the Mayo Clinic; your cup can differ with the beans, the brew and the size.")) {
+		<section class="tool">
+			@CaffeineCalc(c, "/calculators/caffeine")
+			<p class="note">The limits come from the FDA and EFSA; the sources, and what the research says about coffee and health, are in our <a class="link" href="/guides/coffee-and-health">health guide</a>. This is general information, not medical advice.</p>
+		</section>
+	}
+}
+
+// BrewRatioPage is the brew ratio calculator.
+templ BrewRatioPage(p Page, b BrewRatio) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Calculators", URL: "/calculators/"}, {Name: "Brew ratio"}},
+		"Brew ratio calculator", "A brew ratio is grams of coffee to grams of water; a gram of water is a millilitre. Give the coffee or the water and pick a ratio.")) {
+		<section class="tool tool-grid">
+			<form class="card tool-form" method="get" action="/calculators/brew-ratio">
+				<label class="field">
+					<span>Coffee (g)</span>
+					<input type="number" name="coffee" min="1" max="2000" step="0.1" value={ b.Coffee } inputmode="decimal"/>
+				</label>
+				<p class="field-or">or</p>
+				<label class="field">
+					<span>Water (ml)</span>
+					<input type="number" name="water" min="1" max="20000" step="1" value={ b.Water } inputmode="numeric"/>
+				</label>
+				<label class="field">
+					<span>Ratio</span>
+					<select class="filter-control" name="ratio">
+						for _, o := range b.Ratios {
+							<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
+						}
+					</select>
+				</label>
+				<fieldset class="field">
+					<legend>Work out</legend>
+					<label class="radio"><input type="radio" name="from" value="coffee" checked?={ b.From != "water" }/> The water, from the coffee</label>
+					<label class="radio"><input type="radio" name="from" value="water" checked?={ b.From == "water" }/> The coffee, from the water</label>
+				</fieldset>
+				<button class="btn btn-primary" type="submit">Work it out</button>
+			</form>
+			<div class="card tool-result" aria-live="polite">
+				<p class="kicker">Your recipe</p>
+				if b.Problem != "" {
+					<p class="tool-problem">{ b.Problem }</p>
+				} else {
+					<p class="tool-answer">{ b.Answer }</p>
+					if b.Cups != "" {
+						<p class="tool-sub">{ b.Cups }</p>
+					}
+				}
+			</div>
+		</section>
+	}
+}
+
+// CostPerCupPage is the cost per cup calculator.
+templ CostPerCupPage(p Page, c CostPerCup) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Calculators", URL: "/calculators/"}, {Name: "Cost per cup"}},
+		"Cost per cup calculator", "What a bag works out to per cup at your dose, in the bag's own currency. A product page fills in its price and size for you.")) {
+		<section class="tool tool-grid">
+			<form class="card tool-form" method="get" action="/calculators/cost-per-cup">
+				<label class="field">
+					<span>Bag price</span>
+					<input type="number" name="price" min="0.01" max="100000" step="0.01" value={ c.Price } inputmode="decimal"/>
+				</label>
+				<label class="field">
+					<span>Bag size (g)</span>
+					<input type="number" name="grams" min="1" max="100000" step="1" value={ c.Grams } inputmode="numeric"/>
+				</label>
+				<label class="field">
+					<span>Coffee per cup (g)</span>
+					<input type="number" name="dose" min="1" max="100" step="0.5" value={ c.Dose } inputmode="decimal"/>
+				</label>
+				<button class="btn btn-primary" type="submit">Work it out</button>
+			</form>
+			<div class="card tool-result" aria-live="polite">
+				<p class="kicker">Per cup</p>
+				if c.Problem != "" {
+					<p class="tool-problem">{ c.Problem }</p>
+				} else {
+					<p class="tool-big">{ c.PerCup }</p>
+					<p class="tool-sub">{ fmt.Sprintf("About %s cups from the bag; %s per kg.", c.Cups, c.PerKilo) }</p>
+				}
+			</div>
+		</section>
+	}
+}
+
+// quizOption is one answer of a quiz question: a radio button.
+templ quizOption(name, value, label, current string) {
+	<label class="choice">
+		<input type="radio" name={ name } value={ value } checked?={ current == value } required/>
+		<span>{ label }</span>
+	</label>
+}
+
+// WhichCoffee is the quiz: the questions, and the answer when they are done.
+templ WhichCoffee(p Page, q Quiz) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Which coffee?"}}, "Which coffee should I buy?",
+		"Three questions to a category to start with, and today's deals in it. It doesn't rank products; the badges do that.")) {
+		<section class="tool tool-grid quiz">
+			<form class="card tool-form" method="get" action="/which-coffee">
+				<fieldset class="question">
+					<legend><b>1</b> What do you drink?</legend>
+					@quizOption("drink", "coffee", "Coffee", q.Drink)
+					@quizOption("drink", "tea", "Tea", q.Drink)
+				</fieldset>
+				<fieldset class="question">
+					<legend><b>2</b> Caffeine?</legend>
+					@quizOption("caffeine", "yes", "Yes, please", q.Caffeine)
+					@quizOption("caffeine", "less", "Little or none", q.Caffeine)
+				</fieldset>
+				<fieldset class="question">
+					<legend><b>3</b> For coffee: how do you make it?</legend>
+					<label class="choice"><input type="radio" name="brew" value="espresso" checked?={ q.Brew == "espresso" }/><span>Espresso machine</span></label>
+					<label class="choice"><input type="radio" name="brew" value="filter" checked?={ q.Brew == "filter" }/><span>Filter or pour-over</span></label>
+					<label class="choice"><input type="radio" name="brew" value="press" checked?={ q.Brew == "press" }/><span>French press</span></label>
+					<label class="choice"><input type="radio" name="brew" value="unsure" checked?={ q.Brew == "unsure" }/><span>Not sure</span></label>
+				</fieldset>
+				<fieldset class="question">
+					<legend><b>3</b> For tea: what do you like?</legend>
+					<label class="choice"><input type="radio" name="taste" value="strong" checked?={ q.Taste == "strong" }/><span>Strong, with milk or without</span></label>
+					<label class="choice"><input type="radio" name="taste" value="fresh" checked?={ q.Taste == "fresh" }/><span>Fresh and grassy</span></label>
+					<label class="choice"><input type="radio" name="taste" value="between" checked?={ q.Taste == "between" }/><span>Somewhere in between</span></label>
+					<label class="choice"><input type="radio" name="taste" value="earthy" checked?={ q.Taste == "earthy" }/><span>Deep and earthy</span></label>
+					<label class="choice"><input type="radio" name="taste" value="whisked" checked?={ q.Taste == "whisked" }/><span>Whisked, as a powder</span></label>
+					<label class="choice"><input type="radio" name="taste" value="spiced" checked?={ q.Taste == "spiced" }/><span>Spiced</span></label>
+				</fieldset>
+				<button class="btn btn-primary" type="submit">Show my answer</button>
+			</form>
+			<div class="card tool-result" aria-live="polite">
+				if q.Result != nil {
+					<p class="kicker">Start with</p>
+					<p class="tool-answer">{ q.Result.Title }</p>
+					<p class="tool-sub">{ q.Result.Why }</p>
+					<a class="btn btn-primary" href={ templ.SafeURL(q.Result.URL) }>
+						{ fmt.Sprintf("See all %d in the US", q.Result.Count) }
+						@icon("arrow-right")
+					</a>
+					<p class="tool-sub">
+						Other regions:
+						for _, m := range q.Result.Markets {
+							<a class="link" href={ templ.SafeURL(m.URL) }>{ m.Name }</a>
+						}
+					</p>
+				} else if q.Drink != "" || q.Caffeine != "" {
+					<p class="tool-problem">Answer the first two questions, and the third for coffee or for tea.</p>
+				} else {
+					<p class="kicker">Your answer</p>
+					<p class="tool-sub">Pick an answer to each question and we'll point you to a category, with today's deals in it.</p>
+				}
+			</div>
+		</section>
+		if q.Result != nil && len(q.Result.Cards) > 0 {
+			<section class="section">
+				<div class="section-head">
+					<div>
+						<h2>{ "Today's " + lower(q.Result.Title) + " deals" }</h2>
+						<p>The biggest drops first, on the US list.</p>
+					</div>
+				</div>
+				@dealList(q.Result.Cards, q.Result.Labels, q.Result.Title)
+			</section>
+		}
+	}
+}
+
+// BlackFriday checks today's sales: real drops against the store's claims.
+templ BlackFriday(p Page, counts []MarketCount, lists []DealsBlock) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Black Friday"}}, "Black Friday coffee deals check",
+		"A store's Black Friday price is its own claim. We check it against what each coffee and tea sold for over the last 30 days.")) {
+		<section class="bf-counts">
+			for _, m := range counts {
+				<a class="card bf-card" href={ templ.SafeURL(m.URL) }>
+					<span class="bf-market">{ m.Market }</span>
+					<span class="bf-num green">{ fmt.Sprint(m.Drops) } <small>real price drops</small></span>
+					<span class="bf-num amber">{ fmt.Sprint(m.Sales) } <small>store sales</small></span>
+				</a>
+			}
+		</section>
+		<section class="card bf-how">
+			<h2>How to read a Black Friday sale</h2>
+			<ul class="careful">
+				<li><b>Green is a real drop.</b> Today's price is under the usual price: the highest price on at least 7 of the last 30 days.</li>
+				<li><b>Amber is the store's own sale.</b> The store shows a crossed-out "was" price. It may be a real cut, or a price it rarely charged; we don't count it.</li>
+				<li><b>A price raised just before the sale doesn't make a drop.</b> A usual price needs at least 7 days at that price in the last 30, so a few days of a higher price don't count.</li>
+			</ul>
+		</section>
+		for _, l := range lists {
+			<section class="section">
+				<div class="section-head">
+					<div>
+						<h2>{ l.Title }</h2>
+						<p>{ fmt.Sprintf("%d today", l.Count) }</p>
+					</div>
+					<a class="btn btn-ghost" href={ templ.SafeURL(l.URL) }>
+						See them all
+						@icon("arrow-right")
+					</a>
+				</div>
+				if len(l.Cards) == 0 {
+					<div class="card empty"><p>None today.</p></div>
+				} else {
+					@dealList(l.Cards, l.Labels, l.Title)
+				}
+			</section>
+		}
+	}
+}
+
+// Cheapest is the US coffees by price per kg.
+templ Cheapest(p Page, l DealsBlock) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Cheapest coffee"}}, "The cheapest coffee per kg in the US today",
+		"Today's US coffees from independent roasters, ordered by the price per kilogram of the size each one is listed with. Shipping isn't included.")) {
+		<section class="card note-card">
+			<p><b>Bigger bags cost less per kilogram,</b> so large bags lead this list. Check the size before you buy.</p>
+		</section>
+		<section class="section">
+			<div class="section-head">
+				<div>
+					<h2>{ l.Title }</h2>
+					<p>{ fmt.Sprintf("The first 24 of %d coffees", l.Count) }</p>
+				</div>
+				<a class="btn btn-ghost" href={ templ.SafeURL(l.URL) }>
+					The whole list
+					@icon("arrow-right")
+				</a>
+			</div>
+			@dealList(l.Cards, l.Labels, "Cheapest coffee per kg")
+		</section>
+	}
+}

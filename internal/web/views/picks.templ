@@ -1,0 +1,128 @@
+package views
+
+import "fmt"
+
+// pageHead is the band's heading of a page without a list: crumbs, title,
+// a line under it.
+templ pageHead(links []NavLink, title, lede string) {
+	<section class="wrap hero-grid hero-plain">
+		<div class="hero-text">
+			if len(links) > 0 {
+				@crumbs(links)
+			}
+			<h1>{ title }</h1>
+			if lede != "" {
+				<p class="lede">{ lede }</p>
+			}
+		</div>
+	</section>
+}
+
+// Watchlist is the visitor's saved products, with today's prices.
+templ Watchlist(p Page, cards []Card, saved int) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Watchlist"}}, "Your watchlist",
+		"The products you saved, with today's price. The list lives in a cookie in this browser: no account, nothing sent to us but the products' addresses.")) {
+		if len(cards) == 0 {
+			<div class="card empty">
+				@icon("bookmark")
+				<h2>Nothing saved yet</h2>
+				<p>Open a product and choose "Add to watchlist". It stays here, in this browser, for a year.</p>
+				<a class="btn btn-primary" href="/">See today's deals</a>
+			</div>
+		} else {
+			<p class="list-note">{ fmt.Sprintf("%d saved", len(cards)) }</p>
+			<section class="deal-list" aria-label="Your watchlist">
+				for _, c := range cards {
+					<div class="watch-item">
+						@productRow(c, Labels{Buy: "Go to store"})
+						<a class="watch-remove" href={ templ.SafeURL(c.WatchURL) } rel="nofollow">
+							@icon("x")
+							Remove
+						</a>
+					</div>
+				}
+			</section>
+			if saved > len(cards) {
+				<p class="list-note">{ fmt.Sprintf("%d saved products aren't sold in that market any more, so they aren't shown.", saved-len(cards)) }</p>
+			}
+		}
+	}
+}
+
+// Compare is up to four products side by side.
+templ Compare(p Page, cards []Card, clearURL string) {
+	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Compare"}}, "Compare",
+		"Up to four products side by side, with today's prices and what we measured. Pick them with Compare on any list.")) {
+		if len(cards) == 0 {
+			<div class="card empty">
+				@icon("scales")
+				<h2>Nothing to compare yet</h2>
+				<p>Choose "Compare" on up to four products in any list.</p>
+				<a class="btn btn-primary" href="/">See today's deals</a>
+			</div>
+		} else {
+			<div class="compare-scroll">
+				<table class="compare-table">
+					<thead>
+						<tr>
+							<th scope="col"><span class="sr-only">Product</span></th>
+							for _, c := range cards {
+								<th scope="col">
+									<a class="compare-img" href={ templ.SafeURL(c.URL) }>
+										if c.ImageURL != "" {
+											<img src={ c.ImageURL } alt="" width="240" height="240" loading="lazy"/>
+										}
+									</a>
+									<a class="compare-name" href={ templ.SafeURL(c.URL) }>{ c.Title }</a>
+									<a class="compare-remove" href={ templ.SafeURL(c.CompareURL) } rel="nofollow">Remove</a>
+								</th>
+							}
+						</tr>
+					</thead>
+					<tbody>
+						@compareRow("Store", cards, func(c Card) string { return c.Roaster })
+						@compareRow("Market", cards, func(c Card) string { return c.Market })
+						@compareRow("Size", cards, func(c Card) string { return c.Size })
+						@compareRow("Price today", cards, func(c Card) string { return c.Price })
+						@compareRow("Per unit", cards, func(c Card) string { return orDash(c.PerUnit) })
+						@compareRow("Usual price", cards, func(c Card) string { return orDash(c.Usual) })
+						@compareRow("Lowest in 30 days", cards, func(c Card) string { return orDash(c.Low30) })
+						<tr>
+							<th scope="row">Today</th>
+							for _, c := range cards {
+								<td>
+									@dealBadge(c)
+									if !c.OutOfStock && c.RealDrop == 0 && c.StorePercent == 0 && !c.LowestIn30 && c.LowestSince == "" {
+										<span class="muted">No deal today</span>
+									}
+								</td>
+							}
+						</tr>
+						@compareRow("Our reading", cards, func(c Card) string { return c.Reading })
+						<tr>
+							<th scope="row"><span class="sr-only">Store link</span></th>
+							for _, c := range cards {
+								<td>
+									<a class="btn btn-primary btn-block" href={ templ.SafeURL(c.BuyURL) } rel="nofollow">
+										Go to store
+										@icon("external")
+									</a>
+								</td>
+							}
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<p class="list-note"><a class="link" href={ templ.SafeURL(clearURL) } rel="nofollow">Clear the comparison</a></p>
+		}
+	}
+}
+
+templ compareRow(label string, cards []Card, value func(Card) string) {
+	<tr>
+		<th scope="row">{ label }</th>
+		for _, c := range cards {
+			<td>{ value(c) }</td>
+		}
+	</tr>
+}
