@@ -66,6 +66,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{market}/tea/{$}", s.listing(teaKind))
 	mux.HandleFunc("GET /{market}/coffee/{slug}", s.product(coffeeKind))
 	mux.HandleFunc("GET /{market}/tea/{slug}", s.product(teaKind))
+	mux.HandleFunc("GET /{market}/brands/{$}", s.brandsIndex)
+	mux.HandleFunc("GET /{market}/brands/{slug}", s.brandPage)
+	// The guides are one set for every market. These patterns are narrower
+	// than the market ones above, so ServeMux prefers them.
+	mux.HandleFunc("GET /guides", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/guides/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /guides/{$}", s.guidesIndex)
+	mux.HandleFunc("GET /guides/{slug}", s.guide)
 	// A "GET" pattern also answers HEAD, which uptime monitors send (the
 	// sister sites' monitor once stayed red because their endpoint didn't).
 	mux.HandleFunc("GET /api/health/sources", s.health)
@@ -198,8 +207,19 @@ var (
 	kinds = []kind{coffeeKind, teaKind}
 )
 
-// nav lists a market's sections for the header, marking the current one.
+// nav is the header's menu in a market: its sections, its brands and the
+// guides (one set for every market), marking the current one by name
+// ("coffee", "tea", "brands", "guides").
 func nav(m market.Market, current string) []views.NavLink {
+	links := kindLinks(m, current)
+	links = append(links,
+		views.NavLink{Name: "Brands", URL: "/" + m.Code + "/brands/", Current: current == "brands"},
+		views.NavLink{Name: "Guides", URL: "/guides/", Current: current == "guides"})
+	return links
+}
+
+// kindLinks are a market's sections alone: the coffee/tea switch of a listing.
+func kindLinks(m market.Market, current string) []views.NavLink {
 	links := make([]views.NavLink, 0, len(kinds))
 	for _, k := range kinds {
 		links = append(links, views.NavLink{Name: k.nav, URL: "/" + m.Code + "/" + k.listPath, Current: k.name == current})
@@ -215,10 +235,14 @@ func (s *Server) addSlash(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/"+r.PathValue("market")+"/", http.StatusMovedPermanently)
 }
 
-// addSectionSlash moves "/en-us/tea" to "/en-us/tea/"; anything else at
-// that depth is not a page.
+// addSectionSlash moves "/en-us/tea" to "/en-us/tea/" (and "/en-us/brands");
+// anything else at that depth is not a page.
 func (s *Server) addSectionSlash(w http.ResponseWriter, r *http.Request) {
 	if _, ok := market.ByCode(r.PathValue("market")); ok {
+		if r.PathValue("section") == "brands" {
+			http.Redirect(w, r, "/"+r.PathValue("market")+"/brands/", http.StatusMovedPermanently)
+			return
+		}
 		for _, k := range kinds {
 			if k.listPath != "" && k.listPath == r.PathValue("section")+"/" {
 				http.Redirect(w, r, "/"+r.PathValue("market")+"/"+k.listPath, http.StatusMovedPermanently)
@@ -239,53 +263,103 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		s.notFound(w, r)
 		return
 	}
-	// Page 1 is the bare market URL; ?page=1 or a page past the end is not a
-	// page of ours (404), so each listing page has exactly one address.
-	// show narrows the list to real drops or to the store's own sales. Those
-	// views are not indexed: they repeat products of the full list.
-	show := r.URL.Query().Get("show")
-	if show != "" && show != "drops" && show != "sales" {
-		s.notFound(w, r)
+	st, ok := s.readList(w, r, m, k, "/"+m.Code+"/"+k.listPath, 0)
+	if !ok {
 		return
 	}
-	page := 1
+	title := fmt.Sprintf(k.title, m.Name)
+	if st.page > 1 {
+		title = fmt.Sprintf("%s, page %d", title, st.page)
+	}
+	// Each page is its own canonical (not page 1): pointing every page at
+	// page 1 would tell search engines to drop the products listed further on.
+	p := views.Page{
+		Title: title + " — CupProof", Lang: m.Lang,
+		Description: fmt.Sprintf(k.desc, st.total),
+		Canonical:   s.SiteURL + st.pageURL(st.page),
+		NoIndex:     st.show != "",
+		Nav:         nav(m, k.name),
+	}
+	// Page 1 of a listing has a sibling in every market. Page N does not:
+	// the third page of US coffees and of UK coffees list different coffees,
+	// so a later page names only itself.
+	paths := map[string]string{m.Code: st.pageURL(st.page)}
+	xDefault := ""
+	if st.page == 1 && st.show == "" {
+		for _, other := range market.All {
+			paths[other.Code] = "/" + other.Code + "/" + k.listPath
+		}
+		xDefault = "/"
+	}
+	p = s.inMarkets(p, m, k, paths, xDefault)
+	l := views.Listing{
+		Heading: m.Short + " " + k.name, Market: m.Short, Section: k.nav, MarketURL: "/" + m.Code + "/",
+		PricesIn: "Prices in " + currencyName(m.Currency) + ", checked daily",
+		Kinds:    kindLinks(m, k.name),
+		Filters:  st.filters, Cards: st.cards, Pager: st.pager, Labels: k.labels,
+	}
+	s.render(w, r, http.StatusOK, views.MarketHome(p, l))
+}
+
+// listState is one page of a filtered list of coffees. A market listing and
+// a brand page share it, so their filters, pages and rows work alike.
+type listState struct {
+	show    string // "", "drops" or "sales"
+	page    int
+	total   int64 // coffees under the current filter
+	cards   []views.Card
+	pager   views.Pager
+	filters []views.Filter
+	pageURL func(page int) string // under the current filter
+}
+
+// readList reads ?show= and ?page= for the list at base and the rows they
+// ask for; roaster narrows it to one store (0 = all). Page 1 is the bare
+// URL; ?page=1, a page past the end or an unknown filter is not a page of
+// ours, so each page has exactly one address. When the request is not a
+// page, readList answers it (404 or 500) and returns false.
+func (s *Server) readList(w http.ResponseWriter, r *http.Request, m market.Market, k kind, base string, roaster int64) (listState, bool) {
+	st := listState{show: r.URL.Query().Get("show"), page: 1}
+	if st.show != "" && st.show != "drops" && st.show != "sales" {
+		s.notFound(w, r)
+		return st, false
+	}
 	if raw := r.URL.Query().Get("page"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 2 {
 			s.notFound(w, r)
-			return
+			return st, false
 		}
-		page = n
+		st.page = n
 	}
 	counts := map[string]int64{}
 	for _, f := range []string{"", "drops", "sales"} {
-		n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: f})
+		n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: f, Roaster: roaster})
 		if err != nil {
 			s.fail(w, r, err)
-			return
+			return st, false
 		}
 		counts[f] = n
 	}
-	total := counts[show]
-	pages := max(1, int((total+pageSize-1)/pageSize))
-	if page > pages {
+	st.total = counts[st.show]
+	pages := max(1, int((st.total+pageSize-1)/pageSize))
+	if st.page > pages {
 		s.notFound(w, r)
-		return
+		return st, false
 	}
 	rows, err := s.Q.ListCoffees(r.Context(), db.ListCoffeesParams{
-		Market: m.Code, Kind: k.name, Show: show, PageSize: pageSize, Skip: int32((page - 1) * pageSize),
+		Market: m.Code, Kind: k.name, Show: st.show, PageSize: pageSize, Skip: int32((st.page - 1) * pageSize), Roaster: roaster,
 	})
 	if err != nil {
 		s.fail(w, r, err)
-		return
+		return st, false
 	}
-	cards, err := s.cards(r.Context(), m, k, rows)
-	if err != nil {
+	if st.cards, err = s.cards(r.Context(), m, k, rows); err != nil {
 		s.fail(w, r, err)
-		return
+		return st, false
 	}
-	base := "/" + m.Code + "/" + k.listPath
-	pageURL := func(n int) string {
+	show := st.show
+	st.pageURL = func(n int) string {
 		q := url.Values{}
 		if show != "" {
 			q.Set("show", show)
@@ -298,39 +372,13 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		}
 		return base + "?" + q.Encode()
 	}
-	pg := views.Pager{Page: page, Pages: pages, Total: int(total)}
-	if page > 1 {
-		pg.PrevURL = pageURL(page - 1)
+	st.pager = views.Pager{Page: st.page, Pages: pages, Total: int(st.total)}
+	if st.page > 1 {
+		st.pager.PrevURL = st.pageURL(st.page - 1)
 	}
-	if page < pages {
-		pg.NextURL = pageURL(page + 1)
+	if st.page < pages {
+		st.pager.NextURL = st.pageURL(st.page + 1)
 	}
-	title := fmt.Sprintf(k.title, m.Name)
-	if page > 1 {
-		title = fmt.Sprintf("%s, page %d", title, page)
-	}
-	// Each page is its own canonical (not page 1): pointing every page at
-	// page 1 would tell search engines to drop the products listed further on.
-	url := s.SiteURL + pageURL(page)
-	p := views.Page{
-		Title: title + " — CupProof", Lang: m.Lang,
-		Description: fmt.Sprintf(k.desc, total),
-		Canonical:   url,
-		NoIndex:     show != "",
-		Nav:         nav(m, k.name),
-	}
-	// Page 1 of a listing has a sibling in every market. Page N does not:
-	// the third page of US coffees and of UK coffees list different coffees,
-	// so a later page names only itself.
-	paths := map[string]string{m.Code: pageURL(page)}
-	xDefault := ""
-	if page == 1 && show == "" {
-		for _, other := range market.All {
-			paths[other.Code] = "/" + other.Code + "/" + k.listPath
-		}
-		xDefault = "/"
-	}
-	p = s.inMarkets(p, m, k, paths, xDefault)
 	filter := func(label, f, dot string) views.Filter {
 		u := base
 		if f != "" {
@@ -338,13 +386,8 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		}
 		return views.Filter{Label: label, URL: u, Count: counts[f], Current: f == show, Dot: dot}
 	}
-	l := views.Listing{
-		Heading: m.Short + " " + k.name, Market: m.Short, Section: k.nav, MarketURL: "/" + m.Code + "/",
-		PricesIn: "Prices in " + currencyName(m.Currency) + ", checked daily",
-		Filters:  []views.Filter{filter("All", "", ""), filter("Real drops", "drops", "green"), filter("Store sales", "sales", "amber")},
-		Cards:    cards, Pager: pg, Labels: k.labels,
-	}
-	s.render(w, r, http.StatusOK, views.MarketHome(p, l))
+	st.filters = []views.Filter{filter("All", "", ""), filter("Real drops", "drops", "green"), filter("Store sales", "sales", "amber")}
+	return st, true
 }
 
 // cards turns one page of ListCoffees into listing rows, with one history
@@ -706,6 +749,15 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 		for _, k := range kinds {
 			fmt.Fprintf(&b, "<url><loc>%s/%s/%s</loc></url>\n", s.SiteURL, m.Code, k.listPath)
 		}
+		fmt.Fprintf(&b, "<url><loc>%s/%s/brands/</loc></url>\n", s.SiteURL, m.Code)
+		brands, err := s.Q.ListBrands(r.Context(), m.Code)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		for _, br := range brands {
+			fmt.Fprintf(&b, "<url><loc>%s/%s/brands/%s</loc></url>\n", s.SiteURL, m.Code, br.Slug)
+		}
 		rows, err := s.Q.SitemapCoffees(r.Context(), m.Code)
 		if err != nil {
 			s.fail(w, r, err)
@@ -715,6 +767,9 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(&b, "<url><loc>%s/%s/%s/%s</loc><lastmod>%s</lastmod></url>\n",
 				s.SiteURL, m.Code, segment[c.Kind], c.Slug, c.LastSeen.Time.UTC().Format("2006-01-02"))
 		}
+	}
+	for _, g := range []string{"/guides/", "/guides/coffee-and-health", "/guides/coffee-history"} {
+		fmt.Fprintf(&b, "<url><loc>%s%s</loc></url>\n", s.SiteURL, g)
 	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")

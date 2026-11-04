@@ -140,6 +140,14 @@ templ Layout(p Page, hero templ.Component) {
 							<li><a href="/en-eu/tea/">EU tea</a></li>
 						</ul>
 					</div>
+					<div>
+						<h2>Read</h2>
+						<ul>
+							<li><a href="/en-us/brands/">Brands</a></li>
+							<li><a href="/guides/">Coffee guides</a></li>
+							<li><a href="/guides/coffee-and-health#calculator">Caffeine calculator</a></li>
+						</ul>
+					</div>
 					<div class="footer-note">
 						<h2>How prices are read</h2>
 						if p.MarketNote != "" {
@@ -173,6 +181,14 @@ templ iconGlobe() {
 		<circle cx="12" cy="12" r="9"></circle>
 		<path d="M3 12h18M12 3c2.5 2.8 2.5 15.2 0 18M12 3c-2.5 2.8-2.5 15.2 0 18"></path>
 	</svg>
+}
+
+// Amount writes "1 tea" or "2,956 teas".
+func Amount(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return count(n, many)
 }
 
 // count writes "2,956 teas": thousands grouped, the way the stores write prices.

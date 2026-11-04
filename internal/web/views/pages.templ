@@ -69,6 +69,7 @@ type Listing struct {
 	Section   string // "Coffee"
 	MarketURL string
 	PricesIn  string
+	Kinds     []NavLink // the coffee/tea switch
 	Filters   []Filter
 	Cards     []Card
 	Pager     Pager
@@ -252,7 +253,7 @@ templ Home(p Page, h HomeData) {
 				<p class="fineprint">Prices come from each store's own site. Check the final price there before you buy.</p>
 			</section>
 		}
-		<section class="section">
+		<section class="section" id="how">
 			<div class="section-head">
 				<h2>How a deal earns a green badge</h2>
 				<p>A store's "was" price is a claim. Our daily price record is the proof.</p>
@@ -304,6 +305,7 @@ templ Home(p Page, h HomeData) {
 				</article>
 			</div>
 		</section>
+		@guidesTeaser()
 	}
 }
 
@@ -332,50 +334,56 @@ templ listHero(l Listing, nav []NavLink) {
 
 // MarketHome is a market's listing of one section (coffee or tea).
 templ MarketHome(p Page, l Listing) {
-	@Layout(p, listHero(l, p.Nav)) {
-		<div class="filters">
-			<nav class="chips" aria-label="Show">
-				for _, f := range l.Filters {
-					if f.Current {
-						<a class="chip-link" href={ templ.SafeURL(f.URL) } aria-current="page">
-							if f.Dot != "" {
-								<span class={ "dot", "dot-" + f.Dot }></span>
-							}
-							{ f.Label } <span class="count">{ fmt.Sprint(f.Count) }</span>
-						</a>
-					} else {
-						<a class="chip-link" href={ templ.SafeURL(f.URL) }>
-							if f.Dot != "" {
-								<span class={ "dot", "dot-" + f.Dot }></span>
-							}
-							{ f.Label } <span class="count">{ fmt.Sprint(f.Count) }</span>
-						</a>
-					}
+	@Layout(p, listHero(l, l.Kinds)) {
+		@listBody(l.Filters, l.Cards, l.Pager, l.Labels)
+	}
+}
+
+// listBody is a filtered, paged list of coffees: a market listing's body,
+// and the middle of a brand page.
+templ listBody(filters []Filter, cards []Card, pg Pager, labels Labels) {
+	<div class="filters">
+		<nav class="chips" aria-label="Show">
+			for _, f := range filters {
+				if f.Current {
+					<a class="chip-link" href={ templ.SafeURL(f.URL) } aria-current="page">
+						if f.Dot != "" {
+							<span class={ "dot", "dot-" + f.Dot }></span>
+						}
+						{ f.Label } <span class="count">{ fmt.Sprint(f.Count) }</span>
+					</a>
+				} else {
+					<a class="chip-link" href={ templ.SafeURL(f.URL) }>
+						if f.Dot != "" {
+							<span class={ "dot", "dot-" + f.Dot }></span>
+						}
+						{ f.Label } <span class="count">{ fmt.Sprint(f.Count) }</span>
+					</a>
 				}
-			</nav>
-			<p class="sortnote">Real drops first</p>
+			}
+		</nav>
+		<p class="sortnote">Real drops first</p>
+	</div>
+	<p class="legend"><span><span class="dot dot-green"></span>Green: below the usual price, what it sold for on most of the last 30 days</span><span><span class="dot dot-amber"></span>Amber: the store's own crossed-out price, which we don't rely on</span></p>
+	if len(cards) == 0 {
+		<div class="empty">Nothing here today.</div>
+	} else {
+		<div class="rows">
+			for _, c := range cards {
+				@productRow(c, labels)
+			}
 		</div>
-		<p class="legend"><span><span class="dot dot-green"></span>Green: below the usual price, what it sold for on most of the last 30 days</span><span><span class="dot dot-amber"></span>Amber: the store's own crossed-out price, which we don't rely on</span></p>
-		if len(l.Cards) == 0 {
-			<div class="empty">Nothing here today.</div>
-		} else {
-			<div class="rows">
-				for _, c := range l.Cards {
-					@productRow(c, l.Labels)
-				}
-			</div>
-		}
-		if l.Pager.Pages > 1 {
-			<nav class="pager" aria-label="Pages">
-				if l.Pager.PrevURL != "" {
-					<a class="btn btn-ghost" href={ templ.SafeURL(l.Pager.PrevURL) } rel="prev">Previous</a>
-				}
-				<span class="pager-now" aria-current="page">{ fmt.Sprintf("Page %d of %d", l.Pager.Page, l.Pager.Pages) }</span>
-				if l.Pager.NextURL != "" {
-					<a class="btn btn-ghost" href={ templ.SafeURL(l.Pager.NextURL) } rel="next">Next</a>
-				}
-			</nav>
-		}
+	}
+	if pg.Pages > 1 {
+		<nav class="pager" aria-label="Pages">
+			if pg.PrevURL != "" {
+				<a class="btn btn-ghost" href={ templ.SafeURL(pg.PrevURL) } rel="prev">Previous</a>
+			}
+			<span class="pager-now" aria-current="page">{ fmt.Sprintf("Page %d of %d", pg.Page, pg.Pages) }</span>
+			if pg.NextURL != "" {
+				<a class="btn btn-ghost" href={ templ.SafeURL(pg.NextURL) } rel="next">Next</a>
+			}
+		</nav>
 	}
 }
 

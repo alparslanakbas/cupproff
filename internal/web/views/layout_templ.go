@@ -414,7 +414,7 @@ func Layout(p Page, hero templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>CupProof</span></a><p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own \"was\" price.</p></div><div><h2>Coffee</h2><ul><li><a href=\"/en-us/\">US coffee</a></li><li><a href=\"/en-gb/\">UK coffee</a></li><li><a href=\"/en-eu/\">EU coffee</a></li></ul></div><div><h2>Tea</h2><ul><li><a href=\"/en-us/tea/\">US tea</a></li><li><a href=\"/en-gb/tea/\">UK tea</a></li><li><a href=\"/en-eu/tea/\">EU tea</a></li></ul></div><div class=\"footer-note\"><h2>How prices are read</h2>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>CupProof</span></a><p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own \"was\" price.</p></div><div><h2>Coffee</h2><ul><li><a href=\"/en-us/\">US coffee</a></li><li><a href=\"/en-gb/\">UK coffee</a></li><li><a href=\"/en-eu/\">EU coffee</a></li></ul></div><div><h2>Tea</h2><ul><li><a href=\"/en-us/tea/\">US tea</a></li><li><a href=\"/en-gb/tea/\">UK tea</a></li><li><a href=\"/en-eu/tea/\">EU tea</a></li></ul></div><div><h2>Read</h2><ul><li><a href=\"/en-us/brands/\">Brands</a></li><li><a href=\"/guides/\">Coffee guides</a></li><li><a href=\"/guides/coffee-and-health#calculator\">Caffeine calculator</a></li></ul></div><div class=\"footer-note\"><h2>How prices are read</h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -426,7 +426,7 @@ func Layout(p Page, hero templ.Component) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(p.MarketNote)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 146, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 154, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -501,6 +501,14 @@ func iconGlobe() templ.Component {
 		}
 		return nil
 	})
+}
+
+// Amount writes "1 tea" or "2,956 teas".
+func Amount(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return count(n, many)
 }
 
 // count writes "2,956 teas": thousands grouped, the way the stores write prices.

@@ -1,0 +1,193 @@
+package views
+
+import "fmt"
+
+// BrandCard is one store on the brands index and under "other stores".
+type BrandCard struct {
+	URL      string
+	Name     string
+	Monogram string
+	Tone     int    // 1-6: the badge colour, fixed per store
+	Country  string // "Germany"; "" when the store didn't say
+	Count    string // "12 coffees on today's US list"
+	Drops    int64  // coffees at a real drop today
+	Sales    int64  // coffees with the store's own crossed-out price
+}
+
+// Brands is one market's brands index.
+type Brands struct {
+	Market    string // "US"
+	Roasters  []BrandCard
+	TeaHouses []BrandCard
+}
+
+// Fact is one line of a brand page's "About".
+type Fact struct {
+	Label, Value string
+}
+
+// Brand is one store's page in one market.
+type Brand struct {
+	Name       string
+	Monogram   string
+	Tone       int
+	Market     string // "US"
+	Kind       string // "coffee" or "tea"
+	Noun       string // "coffees" or "teas"
+	StoreURL   string
+	BrandsURL  string
+	Coffees    int64
+	Drops      int64
+	Sales      int64
+	Best       string // lowest price per kg (per 100 g for tea)
+	BestLabel  string
+	About      []Fact
+	RateNote   string // set when the store prices in another currency than the market's
+	Filters    []Filter
+	Cards      []Card
+	Pager      Pager
+	Labels     Labels
+	Others     []BrandCard
+}
+
+// storeWord is what a store of this kind is called on its page.
+func storeWord(kind string) string {
+	if kind == "tea" {
+		return "tea house"
+	}
+	return "roaster"
+}
+
+templ monoBadge(text string, tone int, big bool) {
+	<span class={ "mono", fmt.Sprintf("tone-%d", tone), templ.KV("mono-lg", big) } aria-hidden="true">{ text }</span>
+}
+
+templ brandCardView(c BrandCard) {
+	<a class="brand-card" href={ templ.SafeURL(c.URL) }>
+		<span class="brand-top">
+			@monoBadge(c.Monogram, c.Tone, false)
+			<span class="brand-arrow">@iconChevron()</span>
+		</span>
+		<h3>{ c.Name }</h3>
+		<span class="brand-meta">{ c.Count }</span>
+		if c.Country != "" {
+			<span class="brand-meta">{ "Based in " + c.Country }</span>
+		}
+		<span class="badges">
+			if c.Drops > 0 {
+				<span class="badge badge-green">{ Amount(c.Drops, "real drop", "real drops") }</span>
+			} else if c.Sales > 0 {
+				<span class="badge badge-amber">{ Amount(c.Sales, "store sale", "store sales") }</span>
+			} else {
+				<span class="badge">No badge today</span>
+			}
+		</span>
+	</a>
+}
+
+templ brandsHero(b Brands) {
+	<section class="wrap">
+		<div class="page-hero">
+			<div>
+				<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><span>Brands</span></nav>
+				<h1>Roasters and tea houses</h1>
+				<p class="lede">{ "The stores we read for the " + b.Market + ": what each one has in stock today, and how many of those prices are real drops." }</p>
+			</div>
+			<nav class="toggle" aria-label="Jump to">
+				<a href="#roasters">Coffee roasters</a>
+				<a href="#tea-houses">Tea houses</a>
+			</nav>
+		</div>
+	</section>
+}
+
+templ BrandsIndex(p Page, b Brands) {
+	@Layout(p, brandsHero(b)) {
+		<p class="legend"><span><span class="dot dot-green"></span>Most real drops first</span><span>Counts come from today's list and change with each price check.</span></p>
+		<section class="brand-section" id="roasters">
+			<h2>{ fmt.Sprintf("Coffee roasters (%d)", len(b.Roasters)) }</h2>
+			if len(b.Roasters) == 0 {
+				<div class="empty">No roaster has coffee in stock here today.</div>
+			} else {
+				<div class="brand-grid">
+					for _, c := range b.Roasters {
+						@brandCardView(c)
+					}
+				</div>
+			}
+		</section>
+		<section class="brand-section" id="tea-houses">
+			<h2>{ fmt.Sprintf("Tea houses (%d)", len(b.TeaHouses)) }</h2>
+			if len(b.TeaHouses) == 0 {
+				<div class="empty">No tea house has tea in stock here today.</div>
+			} else {
+				<div class="brand-grid">
+					for _, c := range b.TeaHouses {
+						@brandCardView(c)
+					}
+				</div>
+			}
+		</section>
+	}
+}
+
+templ brandHero(b Brand) {
+	<section class="wrap">
+		<div class="brand-hero">
+			<div class="brand-hero-main">
+				<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href={ templ.SafeURL(b.BrandsURL) }>Brands</a><span>/</span><span>{ b.Name }</span></nav>
+				@monoBadge(b.Monogram, b.Tone, true)
+				<h1>{ b.Name + " deals and price history" }</h1>
+				<p class="lede">{ "We read " + b.Name + "'s " + b.Market + " prices every day and judge each discount against our own 30-day price record, not the store's \"was\" price." }</p>
+				<div class="actions">
+					<a class="btn btn-primary" href={ templ.SafeURL(b.StoreURL) } rel="nofollow">
+						{ "Visit " + b.Name }
+						@iconExternal()
+					</a>
+				</div>
+			</div>
+			<div class="tiles">
+				<p class="tiles-note"><span class="dot dot-green"></span>{ "On today's " + b.Market + " list" }</p>
+				<div class="tile"><span>{ "In stock" }</span><b>{ Amount(b.Coffees, b.Kind, b.Noun) }</b></div>
+				<div class={ "tile", templ.KV("tile-green", b.Drops > 0) }><span>Real drops</span><b>{ fmt.Sprint(b.Drops) }</b></div>
+				<div class={ "tile", templ.KV("tile-amber", b.Sales > 0) }><span>Store sales</span><b>{ fmt.Sprint(b.Sales) }</b></div>
+				<div class="tile"><span>{ b.BestLabel }</span><b>{ b.Best }</b></div>
+			</div>
+		</div>
+	</section>
+}
+
+templ BrandPage(p Page, b Brand) {
+	@Layout(p, brandHero(b)) {
+		<section class="brand-list">
+			<h2>{ b.Name + " on today's " + b.Market + " list" }</h2>
+			@listBody(b.Filters, b.Cards, b.Pager, b.Labels)
+		</section>
+		<section class="section">
+			<div class="card about-card">
+				<h2>{ "About this " + storeWord(b.Kind) }</h2>
+				<dl class="facts">
+					for _, f := range b.About {
+						<div><dt>{ f.Label }</dt><dd>{ f.Value }</dd></div>
+					}
+				</dl>
+				if b.RateNote != "" {
+					<p class="fineprint">{ b.RateNote }</p>
+				}
+			</div>
+		</section>
+		if len(b.Others) > 0 {
+			<section class="section">
+				<div class="section-head">
+					<h2>Other stores on today's list</h2>
+					<a class="btn btn-ghost" href={ templ.SafeURL(b.BrandsURL) }>All brands</a>
+				</div>
+				<div class="brand-grid">
+					for _, c := range b.Others {
+						@brandCardView(c)
+					}
+				</div>
+			</section>
+		}
+	}
+}

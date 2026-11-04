@@ -86,16 +86,25 @@ JOIN coffees c ON c.id = o.coffee_id
 JOIN roasters r ON r.id = c.roaster_id
 WHERE o.market = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = $2
   AND ($3::text = '' OR ($3 = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR ($3 = 'sales' AND s.latest_compare_at IS NOT NULL))
+  AND ($4::bigint = 0 OR r.id = $4) AND ($5::text = '' OR c.title ~* $5)
 `
 
 type CountCoffeesParams struct {
-	Market string
-	Kind   string
-	Show   string
+	Market  string
+	Kind    string
+	Show    string
+	Roaster int64
+	Title   string
 }
 
 func (q *Queries) CountCoffees(ctx context.Context, arg CountCoffeesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCoffees, arg.Market, arg.Kind, arg.Show)
+	row := q.db.QueryRow(ctx, countCoffees,
+		arg.Market,
+		arg.Kind,
+		arg.Show,
+		arg.Roaster,
+		arg.Title,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -186,6 +195,7 @@ FROM (
     JOIN offer_summaries s ON s.offer_id = o.id
     WHERE s.latest_available AND r.kind = $2
       AND ($3::text = '' OR ($3 = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR ($3 = 'sales' AND s.latest_compare_at IS NOT NULL))
+      AND ($6::bigint = 0 OR r.id = $6) AND ($7::text = '' OR c.title ~* $7)
     -- The size a row shows: a real drop first, then a store sale, then the
     -- smallest bag, so a coffee whose 1 kg bag dropped isn't listed by its
     -- unchanged 250 g bag and sorted among the full prices.
@@ -203,6 +213,8 @@ type ListCoffeesParams struct {
 	Show     string
 	Skip     int32
 	PageSize int32
+	Roaster  int64
+	Title    string
 }
 
 type ListCoffeesRow struct {
@@ -236,7 +248,8 @@ type ListCoffeesRow struct {
 // below the usual price, rounded down; never a converted price that only
 // followed the exchange rate), then grouped by store, like a café
 // menu lists its producers. @show narrows the list to real drops or to the
-// store's own sales (empty = everything).
+// store's own sales (empty = everything); @roaster to one store (0 = all),
+// @title to titles matching a regular expression (empty = all).
 func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]ListCoffeesRow, error) {
 	rows, err := q.db.Query(ctx, listCoffees,
 		arg.Market,
@@ -244,6 +257,8 @@ func (q *Queries) ListCoffees(ctx context.Context, arg ListCoffeesParams) ([]Lis
 		arg.Show,
 		arg.Skip,
 		arg.PageSize,
+		arg.Roaster,
+		arg.Title,
 	)
 	if err != nil {
 		return nil, err
@@ -764,4 +779,134 @@ func (q *Queries) UpsertOffer(ctx context.Context, arg UpsertOfferParams) (int64
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listBrands = `-- name: ListBrands :many
+SELECT r.id, r.slug, r.name, r.kind, r.country,
+       count(DISTINCT c.id) AS coffees,
+       count(DISTINCT c.id) FILTER (WHERE s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) AS drops,
+       count(DISTINCT c.id) FILTER (WHERE s.latest_compare_at IS NOT NULL) AS sales,
+       (array_agg(s.latest_price ORDER BY s.latest_price::numeric / o.weight_grams, o.id))[1] AS best_price,
+       (array_agg(o.weight_grams ORDER BY s.latest_price::numeric / o.weight_grams, o.id))[1] AS best_grams
+FROM roasters r
+JOIN coffees c ON c.roaster_id = r.id
+JOIN offers o ON o.coffee_id = c.id AND o.market = $1 AND o.last_seen_at > now() - interval '48 hours'
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE r.active AND s.latest_available
+GROUP BY r.id
+ORDER BY drops DESC, coffees DESC, r.name
+`
+
+type ListBrandsRow struct {
+	ID        int64
+	Slug      string
+	Name      string
+	Kind      string
+	Country   *string
+	Coffees   int64
+	Drops     int64
+	Sales     int64
+	BestPrice int64
+	BestGrams int32
+}
+
+// Every active store with something in stock in a market today, with what its
+// card shows: coffees in stock, real drops (the listing's rule, own price
+// included), store sales, and the offer with the lowest price per gram (its
+// price and weight, formatted like a listing row). Most real drops first,
+// then the biggest lists.
+func (q *Queries) ListBrands(ctx context.Context, market string) ([]ListBrandsRow, error) {
+	rows, err := q.db.Query(ctx, listBrands, market)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBrandsRow
+	for rows.Next() {
+		var i ListBrandsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Kind,
+			&i.Country,
+			&i.Coffees,
+			&i.Drops,
+			&i.Sales,
+			&i.BestPrice,
+			&i.BestGrams,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const brandBySlug = `-- name: BrandBySlug :one
+SELECT id, slug, name, base_url, kind, country, currency, ships_to
+FROM roasters
+WHERE slug = $1 AND active
+`
+
+type BrandBySlugRow struct {
+	ID       int64
+	Slug     string
+	Name     string
+	BaseUrl  string
+	Kind     string
+	Country  *string
+	Currency *string
+	ShipsTo  []string
+}
+
+// One store for its brand page: what /meta.json told us about it.
+func (q *Queries) BrandBySlug(ctx context.Context, slug string) (BrandBySlugRow, error) {
+	row := q.db.QueryRow(ctx, brandBySlug, slug)
+	var i BrandBySlugRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.BaseUrl,
+		&i.Kind,
+		&i.Country,
+		&i.Currency,
+		&i.ShipsTo,
+	)
+	return i, err
+}
+
+const brandMarkets = `-- name: BrandMarkets :many
+SELECT DISTINCT o.market
+FROM offers o
+JOIN coffees c ON c.id = o.coffee_id
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE c.roaster_id = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available
+ORDER BY o.market
+`
+
+// The markets where a store has something in stock today: its brand page
+// exists there, so those pages point at each other (hreflang).
+func (q *Queries) BrandMarkets(ctx context.Context, roasterID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, brandMarkets, roasterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var market string
+		if err := rows.Scan(&market); err != nil {
+			return nil, err
+		}
+		items = append(items, market)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

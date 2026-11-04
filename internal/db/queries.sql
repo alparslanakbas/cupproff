@@ -56,6 +56,7 @@ FROM (
     JOIN offer_summaries s ON s.offer_id = o.id
     WHERE s.latest_available AND r.kind = @kind
       AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL))
+      AND (@roaster::bigint = 0 OR r.id = @roaster) AND (@title::text = '' OR c.title ~* @title)
     -- The size a row shows: a real drop first, then a store sale, then the
     -- smallest bag, so a coffee whose 1 kg bag dropped isn't listed by its
     -- unchanged 250 g bag and sorted among the full prices.
@@ -65,7 +66,8 @@ FROM (
 -- below the usual price, rounded down; never a converted price that only
 -- followed the exchange rate), then grouped by store, like a café
 -- menu lists its producers. @show narrows the list to real drops or to the
--- store's own sales (empty = everything).
+-- store's own sales (empty = everything); @roaster to one store (0 = all),
+-- @title to titles matching a regular expression (empty = all).
 ORDER BY (x.usual > x.price_minor AND x.own_price IN ('', 'dropped')) DESC,
          (CASE WHEN x.usual > x.price_minor AND x.own_price IN ('', 'dropped') THEN (x.usual - x.price_minor) * 100 / x.usual ELSE 0 END) DESC,
          x.roaster_name, x.title, x.slug
@@ -78,7 +80,8 @@ JOIN offer_summaries s ON s.offer_id = o.id
 JOIN coffees c ON c.id = o.coffee_id
 JOIN roasters r ON r.id = c.roaster_id
 WHERE o.market = @market AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = @kind
-  AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL));
+  AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL))
+  AND (@roaster::bigint = 0 OR r.id = @roaster) AND (@title::text = '' OR c.title ~* @title);
 
 -- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,
@@ -275,3 +278,39 @@ SET currency = EXCLUDED.currency, checked_at = EXCLUDED.checked_at;
 SELECT DISTINCT market FROM offers
 WHERE coffee_id = $1 AND last_seen_at > now() - interval '48 hours'
 ORDER BY market;
+
+-- Every active store with something in stock in a market today, with what its
+-- card shows: coffees in stock, real drops (the listing's rule, own price
+-- included), store sales, and the offer with the lowest price per gram (its
+-- price and weight, formatted like a listing row). Most real drops first,
+-- then the biggest lists.
+-- name: ListBrands :many
+SELECT r.id, r.slug, r.name, r.kind, r.country,
+       count(DISTINCT c.id) AS coffees,
+       count(DISTINCT c.id) FILTER (WHERE s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) AS drops,
+       count(DISTINCT c.id) FILTER (WHERE s.latest_compare_at IS NOT NULL) AS sales,
+       (array_agg(s.latest_price ORDER BY s.latest_price::numeric / o.weight_grams, o.id))[1] AS best_price,
+       (array_agg(o.weight_grams ORDER BY s.latest_price::numeric / o.weight_grams, o.id))[1] AS best_grams
+FROM roasters r
+JOIN coffees c ON c.roaster_id = r.id
+JOIN offers o ON o.coffee_id = c.id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE r.active AND s.latest_available
+GROUP BY r.id
+ORDER BY drops DESC, coffees DESC, r.name;
+
+-- One store for its brand page: what /meta.json told us about it.
+-- name: BrandBySlug :one
+SELECT id, slug, name, base_url, kind, country, currency, ships_to
+FROM roasters
+WHERE slug = $1 AND active;
+
+-- The markets where a store has something in stock today: its brand page
+-- exists there, so those pages point at each other (hreflang).
+-- name: BrandMarkets :many
+SELECT DISTINCT o.market
+FROM offers o
+JOIN coffees c ON c.id = o.coffee_id
+JOIN offer_summaries s ON s.offer_id = o.id
+WHERE c.roaster_id = $1 AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available
+ORDER BY o.market;
