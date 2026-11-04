@@ -171,7 +171,7 @@ func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, err
 	card := views.Card{
 		URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
 		Size: o.SizeLabel, Price: money(o.PriceMinor, o.Currency), PerUnit: k.perUnit(o.PriceMinor, o.WeightGrams, o.Currency),
-		BuyURL: fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID),
+		BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID),
 		StoreNote: k.labels.StoreNote, Ref: ref, Market: m.Short, OutOfStock: !o.Available,
 	}
 	watched, compared := picks(ctx)
@@ -249,6 +249,7 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 	}
 	p := views.Page{Title: "Compare — CoffeeProof", Lang: "en", NoIndex: true, Nav: nav(market.US, "")}
 	p = chrome(r, p, "/"+market.US.Code+"/")
+	p.Comparing = 0 // this page is the comparison: no bar pointing to it
 	w.Header().Set("Cache-Control", "no-store")
 	s.render(w, r, http.StatusOK, views.Compare(p, cards, "/compare/clear?back="+url.QueryEscape("/compare")))
 }

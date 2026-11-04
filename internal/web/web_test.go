@@ -104,3 +104,27 @@ func TestCDNImageResizesOnlyShopify(t *testing.T) {
 		t.Errorf("non-Shopify image changed")
 	}
 }
+
+func TestLocalPathStaysOnSite(t *testing.T) {
+	for in, want := range map[string]string{
+		"/en-us/?cat=decaf&page=2":      "/en-us/?cat=decaf&page=2",
+		"/en-us/coffee/onyx-geo%20":     "/en-us/coffee/onyx-geo%20",
+		"/":                             "/",
+		"":                              "/",
+		"en-us/":                        "/",
+		"https://evil.example/":         "/",
+		"//evil.example/":               "/",
+		"/\\evil.example/":              "/",
+		"/\t/evil.example/":             "/", // browsers drop the tab: "//evil.example/"
+		"/\n/evil.example/":             "/",
+		"/\r\n/evil.example/":           "/",
+		"/ /evil.example/":              "/",
+		"/a\\b":                         "/",
+		"/café":                         "/",
+		"/" + strings.Repeat("a", 1000): "/",
+	} {
+		if got := localPath(in); got != want {
+			t.Errorf("localPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

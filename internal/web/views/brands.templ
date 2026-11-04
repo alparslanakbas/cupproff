@@ -28,24 +28,24 @@ type Fact struct {
 
 // Brand is one store's page in one market.
 type Brand struct {
-	Name       string
-	Monogram   string
-	Tone       int
-	Market     string // "US"
-	Kind       string // "coffee" or "tea"
-	Noun       string // "coffees" or "teas"
-	StoreURL   string
-	BrandsURL  string
-	Coffees    int64
-	Drops      int64
-	Sales      int64
-	Best       string // lowest price per kg (per 100 g for tea)
-	BestLabel  string
-	About      []Fact
-	RateNote   string // set when the store prices in another currency than the market's
-	Deals      Deals
-	Labels     Labels
-	Others     []BrandCard
+	Name      string
+	Monogram  string
+	Tone      int
+	Market    string // "US"
+	Kind      string // "coffee" or "tea"
+	Noun      string // "coffees" or "teas"
+	StoreURL  string
+	BrandsURL string
+	Coffees   int64
+	Drops     int64
+	Sales     int64
+	Best      string // lowest price per kg (per 100 g for tea)
+	BestLabel string
+	About     []Fact
+	RateNote  string // set when the store prices in another currency than the market's
+	Deals     Deals
+	Labels    Labels
+	Others    []BrandCard
 }
 
 // storeWord is what a store of this kind is called on its page.
@@ -64,7 +64,7 @@ templ brandCardView(c BrandCard) {
 	<a class="brand-card" href={ templ.SafeURL(c.URL) }>
 		<span class="brand-top">
 			@monoBadge(c.Monogram, c.Tone, false)
-			<span class="brand-arrow">@iconChevron()</span>
+			<span class="brand-arrow">@icon("caret-right")</span>
 		</span>
 		<h3>{ c.Name }</h3>
 		<span class="brand-meta">{ c.Count }</span>
@@ -140,7 +140,7 @@ templ brandHero(b Brand) {
 				<div class="actions">
 					<a class="btn btn-primary" href={ templ.SafeURL(b.StoreURL) } rel="nofollow">
 						{ "Visit " + b.Name }
-						@iconExternal()
+						@icon("external")
 					</a>
 				</div>
 			</div>

@@ -176,7 +176,9 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 			stores = append(stores, b)
 		}
 	}
-	slices.SortFunc(stores, func(a, b db.ListBrandsRow) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	slices.SortFunc(stores, func(a, b db.ListBrandsRow) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	roasterName := ""
 	if st.roaster != "" {
 		i := slices.IndexFunc(stores, func(b db.ListBrandsRow) bool { return b.Slug == st.roaster })
@@ -427,10 +429,18 @@ func (s *Server) setTheme(w http.ResponseWriter, r *http.Request) {
 }
 
 // localPath keeps a redirect on this site: a path of ours, never "//host"
-// or "/\host", which browsers read as another site.
+// or "/\host", which browsers read as another site. Only printable ASCII
+// without spaces or backslashes passes: browsers drop tabs and newlines from
+// a Location, so "/\t/host" would become "//host". A request's own address
+// (RequestURI) is already percent-encoded, so it always passes.
 func localPath(p string) string {
-	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") || len(p) > 1000 {
+	if len(p) == 0 || len(p) > 1000 || p[0] != '/' || (len(p) > 1 && (p[1] == '/' || p[1] == '\\')) {
 		return "/"
+	}
+	for i := 0; i < len(p); i++ {
+		if c := p[i]; c <= ' ' || c >= 0x7f || c == '\\' {
+			return "/"
+		}
 	}
 	return p
 }

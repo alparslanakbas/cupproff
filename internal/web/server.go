@@ -14,9 +14,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -368,9 +366,9 @@ func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.L
 			URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
 			RoasterURL: "/" + m.Code + "/brands/" + c.RoasterSlug,
 			Size:       c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
-			PerUnit: k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency),
-			BuyURL:  fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
-			Chart:   sparkArea(history[c.OfferID], now, 180, 48, c.Title+" price history"),
+			PerUnit:   k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency),
+			BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
+			Chart:     sparkArea(history[c.OfferID], now, 180, 48, c.Title+" price history"),
 			StoreNote: k.labels.StoreNote,
 			Ref:       m.Code + "/" + k.segment + "/" + c.Slug,
 		}

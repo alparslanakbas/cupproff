@@ -11,9 +11,9 @@ type Page struct {
 	Alternates  []Alternate
 	JSONLD      string // already marshalled with HTML escaping
 	NoIndex     bool
-	Nav         []NavLink // the header's menu
-	Regions     []NavLink // the same page in the other markets, when it exists there
-	MarketNote  string    // what a buyer must know about this market's prices
+	Nav         []NavLink   // the header's menu
+	Regions     []NavLink   // the same page in the other markets, when it exists there
+	MarketNote  string      // what a buyer must know about this market's prices
 	Strip       []StripItem // the category strip under the band, on the lists
 
 	// Filled in from the request by the web package (chrome).
@@ -109,6 +109,23 @@ var footerCategories = []NavLink{
 	{Name: "Oolong tea", URL: "/en-us/tea/?cat=oolong"}, {Name: "White tea", URL: "/en-us/tea/?cat=white"},
 	{Name: "Pu-erh tea", URL: "/en-us/tea/?cat=pu-erh"}, {Name: "Matcha", URL: "/en-us/tea/?cat=matcha"},
 	{Name: "Chai", URL: "/en-us/tea/?cat=chai"}, {Name: "Herbal tea", URL: "/en-us/tea/?cat=herbal"},
+}
+
+// Amount writes "1 tea" or "2,956 teas".
+func Amount(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return count(n, many)
+}
+
+// count writes "2,956 teas": thousands grouped, the way the stores write prices.
+func count(n int64, noun string) string {
+	s := fmt.Sprint(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s + " " + noun
 }
 
 templ Layout(p Page, hero templ.Component) {
