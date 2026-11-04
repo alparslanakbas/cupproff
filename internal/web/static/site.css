@@ -1,4 +1,4 @@
-/* CupProof A3 (Claude Design, Nov 2026): espresso ground, cream type, violet
+/* CoffeeProof (named CupProof until 4 Nov 2026) A3 (Claude Design, Nov 2026): espresso ground, cream type, violet
    for the main action, green for a real drop and amber for the store's own
    sale, never red for a discount. Headings in Funnel Display, text in Inter.
    Breakpoints 960 px and 640 px. */
@@ -308,7 +308,7 @@ main.wrap { padding-bottom: 72px; }
 .footer-grid a { color: var(--muted); }
 .footer-grid a:hover { color: var(--head); }
 .footer-about p, .footer-note p { color: var(--muted); font-size: 14px; margin-top: 12px; }
-.footer-mark { font-family: var(--display); font-weight: 800; font-size: clamp(96px, 18vw, 240px); line-height: .8; letter-spacing: -.05em; color: rgba(243, 230, 211, .045); margin-top: 48px; user-select: none; }
+.footer-mark { font-family: var(--display); font-weight: 800; font-size: clamp(48px, 13vw, 176px); white-space: nowrap; overflow: hidden; line-height: .8; letter-spacing: -.05em; color: rgba(243, 230, 211, .045); margin-top: 48px; user-select: none; }
 .footer-bottom { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 18px 0 28px; font-size: 13px; color: var(--faint); }
 
 /* ---- 960 px ------------------------------------------------------------ */

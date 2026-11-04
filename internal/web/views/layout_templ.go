@@ -215,7 +215,7 @@ func Layout(p Page, hero templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<span>CupProof</span></a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<span>CoffeeProof</span></a> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -414,7 +414,7 @@ func Layout(p Page, hero templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>CupProof</span></a><p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own \"was\" price.</p></div><div><h2>Coffee</h2><ul><li><a href=\"/en-us/\">US coffee</a></li><li><a href=\"/en-gb/\">UK coffee</a></li><li><a href=\"/en-eu/\">EU coffee</a></li></ul></div><div><h2>Tea</h2><ul><li><a href=\"/en-us/tea/\">US tea</a></li><li><a href=\"/en-gb/tea/\">UK tea</a></li><li><a href=\"/en-eu/tea/\">EU tea</a></li></ul></div><div><h2>Read</h2><ul><li><a href=\"/en-us/brands/\">Brands</a></li><li><a href=\"/guides/\">Coffee guides</a></li><li><a href=\"/guides/coffee-and-health#calculator\">Caffeine calculator</a></li></ul></div><div class=\"footer-note\"><h2>How prices are read</h2>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>CoffeeProof</span></a><p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own \"was\" price.</p></div><div><h2>Coffee</h2><ul><li><a href=\"/en-us/\">US coffee</a></li><li><a href=\"/en-gb/\">UK coffee</a></li><li><a href=\"/en-eu/\">EU coffee</a></li></ul></div><div><h2>Tea</h2><ul><li><a href=\"/en-us/tea/\">US tea</a></li><li><a href=\"/en-gb/tea/\">UK tea</a></li><li><a href=\"/en-eu/tea/\">EU tea</a></li></ul></div><div><h2>Read</h2><ul><li><a href=\"/en-us/brands/\">Brands</a></li><li><a href=\"/guides/\">Coffee guides</a></li><li><a href=\"/guides/coffee-and-health#calculator\">Caffeine calculator</a></li></ul></div><div class=\"footer-note\"><h2>How prices are read</h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -437,7 +437,7 @@ func Layout(p Page, hero templ.Component) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own \"was\" price.</p></div></div><div class=\"wrap footer-mark\" aria-hidden=\"true\">CupProof</div><div class=\"wrap footer-bottom\"><span>CupProof is independent. Purchases happen on the store's own site.</span> <span>Prices checked daily.</span></div></footer></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own \"was\" price.</p></div></div><div class=\"wrap footer-mark\" aria-hidden=\"true\">CoffeeProof</div><div class=\"wrap footer-bottom\"><span>CoffeeProof is independent. Purchases happen on the store's own site.</span> <span>Prices checked daily.</span></div></footer></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -14,7 +14,7 @@
 set -euo pipefail
 
 DIR=/home/ubuntu/cupproof
-SITE_URL=${SITE_URL:-https://www.cupproof.com}
+SITE_URL=${SITE_URL:-https://www.coffeeproof.org}
 
 cd "$DIR"
 git pull --ff-only

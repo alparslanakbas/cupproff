@@ -104,7 +104,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := views.Page{
-		Title: "CupProof — coffee and tea price history from independent sellers", Lang: "en",
+		Title: "CoffeeProof — coffee and tea price history from independent sellers", Lang: "en",
 		Description: "Compare specialty coffee and tea prices from independent roasters and tea houses, and see whether a sale is a real price drop.",
 		Canonical:   s.SiteURL + "/",
 	}
@@ -274,7 +274,7 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 	// Each page is its own canonical (not page 1): pointing every page at
 	// page 1 would tell search engines to drop the products listed further on.
 	p := views.Page{
-		Title: title + " — CupProof", Lang: m.Lang,
+		Title: title + " — CoffeeProof", Lang: m.Lang,
 		Description: fmt.Sprintf(k.desc, st.total),
 		Canonical:   s.SiteURL + st.pageURL(st.page),
 		NoIndex:     st.show != "",
@@ -686,7 +686,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 	}
 	url := s.SiteURL + "/" + m.Code + "/" + k.segment + "/" + c.Slug
 	p := views.Page{
-		Title: c.Title + " by " + c.RoasterName + " — price history — CupProof", Lang: m.Lang,
+		Title: c.Title + " by " + c.RoasterName + " — price history — CoffeeProof", Lang: m.Lang,
 		Description: fmt.Sprintf("%s by %s: today's price for every size and whether it is a real price drop.", c.Title, c.RoasterName),
 		Canonical:   url,
 		JSONLD:      string(ldJSON),
@@ -819,7 +819,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
-	p := views.Page{Title: "Page not found — CupProof", Lang: "en", NoIndex: true}
+	p := views.Page{Title: "Page not found — CoffeeProof", Lang: "en", NoIndex: true}
 	s.render(w, r, http.StatusNotFound, views.NotFound(p, "/"))
 }
 

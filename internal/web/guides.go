@@ -16,7 +16,7 @@ import (
 
 func (s *Server) guidesIndex(w http.ResponseWriter, r *http.Request) {
 	p := views.Page{
-		Title:       "Coffee guides: caffeine, health and coffee's history — CupProof",
+		Title:       "Coffee guides: caffeine, health and coffee's history — CoffeeProof",
 		Lang:        "en",
 		Description: "Short reads on caffeine, coffee and health, and how coffee travelled the world, every fact linked to its source.",
 		Canonical:   s.SiteURL + "/guides/",
@@ -73,7 +73,7 @@ func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
 	}
 	c.BarPercent = min(100, c.Total*100/600)
 	p := views.Page{
-		Title:       "Coffee and your health: what the research says — CupProof",
+		Title:       "Coffee and your health: what the research says — CoffeeProof",
 		Lang:        "en",
 		Description: "How much caffeine is too much, what a big 2017 review linked coffee with, unfiltered coffee and cholesterol, and a caffeine calculator, every claim linked to its source.",
 		Canonical:   s.SiteURL + "/guides/coffee-and-health",
@@ -100,7 +100,7 @@ func (s *Server) historyGuide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := views.Page{
-		Title:       "How coffee travelled the world — CupProof",
+		Title:       "How coffee travelled the world — CoffeeProof",
 		Lang:        "en",
 		Description: "From Sufi communities in Yemen to the Panama auction records: a map, a timeline of 19 moments and the famous names on a coffee bag, every date linked to its source.",
 		Canonical:   s.SiteURL + "/guides/coffee-history",

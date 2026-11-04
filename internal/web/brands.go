@@ -40,7 +40,7 @@ func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	path := "/" + m.Code + "/brands/"
 	p := views.Page{
-		Title: "Coffee roasters and tea houses in the " + m.Name + " — CupProof", Lang: m.Lang,
+		Title: "Coffee roasters and tea houses in the " + m.Name + " — CoffeeProof", Lang: m.Lang,
 		Description: fmt.Sprintf("%d coffee roasters and %d tea houses selling in the %s, with today's prices and how many show a real price drop.",
 			len(b.Roasters), len(b.TeaHouses), m.Name),
 		Canonical: s.SiteURL + path,
@@ -99,7 +99,7 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 		title = fmt.Sprintf("%s, page %d", title, st.page)
 	}
 	p := views.Page{
-		Title: title + " — CupProof", Lang: m.Lang,
+		Title: title + " — CoffeeProof", Lang: m.Lang,
 		Description: fmt.Sprintf("%s in the %s: %s, %s today. Each discount is judged against our own 30-day price record.",
 			store.Name, m.Name, views.Amount(me.Coffees, k.name, k.name+"s"), views.Amount(me.Drops, "real price drop", "real price drops")),
 		Canonical: s.SiteURL + st.pageURL(st.page),

@@ -1,9 +1,11 @@
-# CupProof's hosts, for the Turkish stack's Caddy on the same VM, the way
+# CoffeeProof's hosts (the site was named CupProof until 4 Nov 2026; the file,
+# the container and the log keep that name), for the Turkish stack's Caddy on the same VM, the way
 # WheyProof's are: that Caddyfile imports site files from a mounted
 # directory, and its global options (Cloudflare's trusted_proxies) apply
 # here too.
 #
-# NOT MOUNTED YET. Until the domain is bought, Caddy would only fail to get
+# NOT MOUNTED YET. coffeeproof.org was bought on 4 Nov 2026 (Cloudflare
+# Registrar); until its DNS points here, Caddy would only fail to get
 # certificates for these names. On the day: mount this directory in the
 # Turkish compose file, add the import, run `caddy validate`, deploy.
 #
@@ -23,14 +25,14 @@
 	}
 }
 
-www.cupproof.com {
+www.coffeeproof.org {
 	import cupproof-access-log
 	encode zstd gzip
 	reverse_proxy cupproof-web:8080
 }
 
 # One canonical host, as on the sister sites.
-cupproof.com {
+coffeeproof.org {
 	import cupproof-access-log
-	redir https://www.cupproof.com{uri} permanent
+	redir https://www.coffeeproof.org{uri} permanent
 }
