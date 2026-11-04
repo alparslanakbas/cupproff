@@ -14,10 +14,17 @@
 set -euo pipefail
 
 DIR=/home/ubuntu/cupproof
-SITE_URL=${SITE_URL:-https://www.coffeeproof.org}
 
+# Pull first, then run the rest from the pulled script: bash keeps reading the
+# copy it started with, so a deploy that changed this file used to run the old
+# steps (4 Nov 2026: the new site address stayed the old one until the next run).
 cd "$DIR"
-git pull --ff-only
+if [ -z "${DEPLOY_PULLED:-}" ]; then
+  git pull --ff-only
+  DEPLOY_PULLED=1 exec "$DIR/scripts/deploy.sh" "$@"
+fi
+
+SITE_URL=${SITE_URL:-https://www.coffeeproof.org}
 docker build -q -t cupproof . >/dev/null
 docker run --rm --network wheyproof_default --env-file .env --memory 256m cupproof migrate
 
