@@ -107,6 +107,9 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		Title: "CoffeeProof — coffee and tea price history from independent sellers", Lang: "en",
 		Description: "Compare specialty coffee and tea prices from independent roasters and tea houses, and see whether a sale is a real price drop.",
 		Canonical:   s.SiteURL + "/",
+		// The header's menu, as on every other page: the deals below are the
+		// US ones, so the sections lead to the US lists, like the guides'.
+		Nav: nav(market.US, ""),
 	}
 	// The region chooser is every market's x-default: searchers outside the
 	// listed regions land where they can pick one.

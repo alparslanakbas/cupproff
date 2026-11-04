@@ -65,41 +65,27 @@ templ Layout(p Page, hero templ.Component) {
 			for _, a := range p.Alternates {
 				<link rel="alternate" hreflang={ a.Lang } href={ templ.SafeURL(a.URL) }/>
 			}
-			<meta name="color-scheme" content="dark"/>
-			<meta name="theme-color" content="#120D0A"/>
+			<meta name="color-scheme" content="dark light"/>
+			<meta name="theme-color" content="#0F0B08"/>
 			<link rel="preload" href="/static/inter.woff2" as="font" type="font/woff2" crossorigin/>
-			<link rel="preload" href="/static/funnel-display-latin.woff2" as="font" type="font/woff2" crossorigin/>
 			<link rel="stylesheet" href={ StylesheetURL }/>
 			if p.JSONLD != "" {
 				@templ.Raw(`<script type="application/ld+json">` + p.JSONLD + `</script>`)
 			}
 		</head>
 		<body>
-			<header class="site-header">
-				<div class="wrap header-row">
-					<a class="logo" href="/">
-						@logoMark()
-						<span>CoffeeProof</span>
-					</a>
-					if len(p.Nav) > 0 {
-						<nav class="mainnav" aria-label="Sections">
-							for _, n := range p.Nav {
-								if n.Current {
-									<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
-								} else {
-									<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
-								}
-							}
-						</nav>
-					}
-					if len(p.Regions) > 0 {
-						<details class="region">
-							<summary>
-								@iconGlobe()
-								<span>{ currentRegion(p.Regions) }</span>
-							</summary>
-							<nav class="region-menu" aria-label="Region">
-								for _, n := range p.Regions {
+			// The brand band: the header and the page's heading, dark in both
+			// themes as on the sister sites.
+			<div class="hero-zone">
+				<header class="site-header">
+					<div class="wrap header-row">
+						<a class="logo" href="/">
+							@logoMark()
+							<span>CoffeeProof</span>
+						</a>
+						if len(p.Nav) > 0 {
+							<nav class="mainnav" aria-label="Sections">
+								for _, n := range p.Nav {
 									if n.Current {
 										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
 									} else {
@@ -107,11 +93,28 @@ templ Layout(p Page, hero templ.Component) {
 									}
 								}
 							</nav>
-						</details>
-					}
-				</div>
-			</header>
-			@hero
+						}
+						if len(p.Regions) > 0 {
+							<details class="region">
+								<summary>
+									@iconGlobe()
+									<span>{ currentRegion(p.Regions) }</span>
+								</summary>
+								<nav class="region-menu" aria-label="Region">
+									for _, n := range p.Regions {
+										if n.Current {
+											<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+										} else {
+											<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
+										}
+									}
+								</nav>
+							</details>
+						}
+					</div>
+				</header>
+				@hero
+			</div>
 			<main class="wrap">
 				{ children... }
 			</main>
@@ -156,7 +159,6 @@ templ Layout(p Page, hero templ.Component) {
 						<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
 					</div>
 				</div>
-				<div class="wrap footer-mark" aria-hidden="true">CoffeeProof</div>
 				<div class="wrap footer-bottom">
 					<span>CoffeeProof is independent. Purchases happen on the store's own site.</span>
 					<span>Prices checked daily.</span>
