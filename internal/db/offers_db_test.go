@@ -127,6 +127,105 @@ func TestOffersForCoffeeAppliesTheGapRuleAndTracking(t *testing.T) {
 	}
 }
 
+// A store's price in another currency than its own follows the exchange
+// rate (Bocca, 4 Nov 2026: EUR 39.40 every day, USD 45 and 46 by turns). The
+// refresh compares the same size in the store's own currency, and only a drop
+// there lets the converted price count as one.
+func TestConvertedPriceDropsOnlyWithTheStoresOwnPrice(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	q := db.New(pool)
+	roaster, err := q.RoasterBySlug(ctx, "perc") // seeded by migration 00002
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A euro store selling in the US through Shopify Markets.
+	if _, err := pool.Exec(ctx, "UPDATE roasters SET currency = 'EUR' WHERE id = $1", roaster.ID); err != nil {
+		t.Fatal(err)
+	}
+	coffee := func(handle string) int64 {
+		id, err := q.UpsertCoffee(ctx, db.UpsertCoffeeParams{RoasterID: roaster.ID, Handle: handle, Slug: "perc-" + handle, Title: handle})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	offer := func(coffeeID int64, market, currency string) int64 {
+		id, err := q.UpsertOffer(ctx, db.UpsertOfferParams{CoffeeID: coffeeID, Market: market, WeightGrams: 1000, SizeLabel: "1 kg", Currency: currency, VariantID: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	now := time.Now().UTC().Add(-time.Minute)
+	prices := func(offerID, before, today int64) { // ten days at one price, today at another
+		for d := 10; d >= 0; d-- {
+			p := before
+			if d == 0 {
+				p = today
+			}
+			at := pgtype.Timestamptz{Time: now.AddDate(0, 0, -d), Valid: true}
+			if err := q.InsertPricePoint(ctx, db.InsertPricePointParams{OfferID: offerID, SeenAt: at, PriceMinor: p, Available: true}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rate := coffee("rate-only") // the euro price never moved
+	rateEU, rateUS := offer(rate, "en-eu", "EUR"), offer(rate, "en-us", "USD")
+	prices(rateEU, 3940, 3940)
+	prices(rateUS, 4600, 4500)
+	cut := coffee("real-cut") // the store cut its euro price; the dollar one follows
+	cutEU, cutUS := offer(cut, "en-eu", "EUR"), offer(cut, "en-us", "USD")
+	prices(cutEU, 4000, 3600)
+	prices(cutUS, 4700, 4200)
+	lone := coffee("no-euro-price") // never read in euros: nothing to compare with
+	loneUS := offer(lone, "en-us", "USD")
+	prices(loneUS, 4600, 4500)
+
+	if n, err := q.RefreshOfferSummaries(ctx); err != nil || n != 5 {
+		t.Fatalf("refresh: %d rows, err %v; want 5", n, err)
+	}
+	want := map[int64]string{
+		rateEU: pricing.OwnCurrency, rateUS: pricing.OwnNoDrop,
+		cutEU: pricing.OwnCurrency, cutUS: pricing.OwnDropped,
+		loneUS: pricing.OwnUnknown,
+	}
+	for id, w := range want {
+		var got string
+		if err := pool.QueryRow(ctx, "SELECT own_price FROM offer_summaries WHERE offer_id = $1", id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != w {
+			t.Errorf("offer %d: own_price %q, want %q", id, got, w)
+		}
+	}
+
+	// The listing's "Real drops" count and rows apply the same rule.
+	for market, slug := range map[string]string{"en-us": "perc-real-cut", "en-eu": "perc-real-cut"} {
+		n, err := q.CountCoffees(ctx, db.CountCoffeesParams{Market: market, Kind: "coffee", Show: "drops"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := q.ListCoffees(ctx, db.ListCoffeesParams{Market: market, Kind: "coffee", Show: "drops", PageSize: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 || len(rows) != 1 || rows[0].Slug != slug {
+			t.Errorf("%s drops: count %d, %d rows %v; want only %s", market, n, len(rows), rows, slug)
+		}
+	}
+	// And the coffee page: the dollar offer of the rate-only coffee shows no drop.
+	rows, err := q.OffersForCoffee(ctx, db.OffersForCoffeeParams{CoffeeID: rate, Market: "en-us"})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("offers: %v, %d rows", err, len(rows))
+	}
+	r := rows[0]
+	s := pricing.Summary{Latest: r.PriceMinor, Low30: r.Low30, Usual: r.Usual, TrackedSince: r.TrackedSince.Time, LowestTracked: r.LowestTracked, OwnPrice: r.OwnPrice}
+	if s.DropPercent() != 0 || s.LowestIn30Days() {
+		t.Errorf("rate-only offer shows drop %d%%, low30 %v", s.DropPercent(), s.LowestIn30Days())
+	}
+}
+
 // One Shopify shop on two domains (Has Bean and Ozone, 13 Oct 2026) must
 // not be stored twice: the second domain's meta update fails.
 func TestSameShopOnTwoDomainsIsRefused(t *testing.T) {

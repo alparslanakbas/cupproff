@@ -34,6 +34,31 @@ func TestSparklineIsAStepLine(t *testing.T) {
 	}
 }
 
+// The history chart's labels and dot must not scale with the plot: they sit
+// outside the stretched SVG at percentages of the box, so a phone gets the
+// same 12 px text as a desktop.
+func TestHistoryChartKeepsLabelsOutOfThePlot(t *testing.T) {
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	if got := historyChart([]pricePoint{{day, 2000}}, day.Add(24*time.Hour), 0, "USD", "x", "1"); got != "" {
+		t.Fatalf("one point drew %q", got)
+	}
+	pts := []pricePoint{{day, 2000}, {day.Add(48 * time.Hour), 1800}}
+	svg := historyChart(pts, day.Add(96*time.Hour), 2000, "USD", "1 kg price", "size-1")
+	plot := svg[strings.Index(svg, `<svg class="plot"`):strings.Index(svg, `</svg>`)]
+	if !strings.Contains(plot, `preserveAspectRatio="none"`) {
+		t.Errorf("plot doesn't stretch: %s", plot)
+	}
+	if strings.Contains(plot, "<text") || strings.Contains(plot, "<circle") {
+		t.Errorf("labels or dot inside the stretched plot would be distorted: %s", plot)
+	}
+	// $20.00 is the top label (usual and first price), $18.00 the bottom one.
+	for _, want := range []string{`>$20.00</text>`, `>$18.00</text>`, `>Oct 1</text>`, `>Oct 5</text>`, `cx="100%"`} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("chart lacks %s: %s", want, svg)
+		}
+	}
+}
+
 func TestMoneyAndPerKilo(t *testing.T) {
 	if got := money(1925, "USD"); got != "$19.25" {
 		t.Errorf("money = %q", got)

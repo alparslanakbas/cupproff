@@ -34,6 +34,16 @@ type Alternate struct {
 	URL  string
 }
 
+// currentRegion is the short name of the region the page belongs to.
+func currentRegion(regions []NavLink) string {
+	for _, r := range regions {
+		if r.Current {
+			return r.Name
+		}
+	}
+	return "Region"
+}
+
 templ Layout(p Page, hero templ.Component) {
 	<!DOCTYPE html>
 	<html lang={ p.Lang }>
@@ -55,31 +65,40 @@ templ Layout(p Page, hero templ.Component) {
 			for _, a := range p.Alternates {
 				<link rel="alternate" hreflang={ a.Lang } href={ templ.SafeURL(a.URL) }/>
 			}
-			<meta name="color-scheme" content="dark light"/>
+			<meta name="color-scheme" content="dark"/>
+			<meta name="theme-color" content="#120D0A"/>
 			<link rel="preload" href="/static/inter.woff2" as="font" type="font/woff2" crossorigin/>
+			<link rel="preload" href="/static/funnel-display-latin.woff2" as="font" type="font/woff2" crossorigin/>
 			<link rel="stylesheet" href={ StylesheetURL }/>
 			if p.JSONLD != "" {
 				@templ.Raw(`<script type="application/ld+json">` + p.JSONLD + `</script>`)
 			}
 		</head>
 		<body>
-			<div class="hero-zone">
-				<header class="topbar">
-					<div class="container topbar-row">
-						<a class="brand" href="/">Cup<span>Proof</span></a>
-						if len(p.Nav) > 0 {
-							<nav class="sections" aria-label="Sections">
-								for _, n := range p.Nav {
-									if n.Current {
-										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
-									} else {
-										<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
-									}
+			<header class="site-header">
+				<div class="wrap header-row">
+					<a class="logo" href="/">
+						@logoMark()
+						<span>CupProof</span>
+					</a>
+					if len(p.Nav) > 0 {
+						<nav class="mainnav" aria-label="Sections">
+							for _, n := range p.Nav {
+								if n.Current {
+									<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
+								} else {
+									<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
 								}
-							</nav>
-						}
-						if len(p.Regions) > 0 {
-							<nav class="regions" aria-label="Region">
+							}
+						</nav>
+					}
+					if len(p.Regions) > 0 {
+						<details class="region">
+							<summary>
+								@iconGlobe()
+								<span>{ currentRegion(p.Regions) }</span>
+							</summary>
+							<nav class="region-menu" aria-label="Region">
 								for _, n := range p.Regions {
 									if n.Current {
 										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
@@ -88,25 +107,72 @@ templ Layout(p Page, hero templ.Component) {
 									}
 								}
 							</nav>
-						}
-					</div>
-				</header>
-				@hero
-			</div>
-			<main class="container">
+						</details>
+					}
+				</div>
+			</header>
+			@hero
+			<main class="wrap">
 				{ children... }
 			</main>
-			<footer class="footer">
-				<div class="container">
-					if p.MarketNote != "" {
-						<p class="market-note">{ p.MarketNote }</p>
-					}
-					<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
-					<p>CupProof is independent. Every link goes to the store's own page.</p>
+			<footer class="site-footer">
+				<div class="wrap footer-grid">
+					<div class="footer-about">
+						<a class="logo" href="/">
+							@logoMark()
+							<span>CupProof</span>
+						</a>
+						<p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own "was" price.</p>
+					</div>
+					<div>
+						<h2>Coffee</h2>
+						<ul>
+							<li><a href="/en-us/">US coffee</a></li>
+							<li><a href="/en-gb/">UK coffee</a></li>
+							<li><a href="/en-eu/">EU coffee</a></li>
+						</ul>
+					</div>
+					<div>
+						<h2>Tea</h2>
+						<ul>
+							<li><a href="/en-us/tea/">US tea</a></li>
+							<li><a href="/en-gb/tea/">UK tea</a></li>
+							<li><a href="/en-eu/tea/">EU tea</a></li>
+						</ul>
+					</div>
+					<div class="footer-note">
+						<h2>How prices are read</h2>
+						if p.MarketNote != "" {
+							<p>{ p.MarketNote }</p>
+						}
+						<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
+					</div>
+				</div>
+				<div class="wrap footer-mark" aria-hidden="true">CupProof</div>
+				<div class="wrap footer-bottom">
+					<span>CupProof is independent. Purchases happen on the store's own site.</span>
+					<span>Prices checked daily.</span>
 				</div>
 			</footer>
 		</body>
 	</html>
+}
+
+templ logoMark() {
+	<span class="logo-mark" aria-hidden="true">
+		<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M5 9h11v5a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5z"></path>
+			<path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"></path>
+			<path d="M9 3c-.6 1 .6 2 0 3M12.5 3c-.6 1 .6 2 0 3"></path>
+		</svg>
+	</span>
+}
+
+templ iconGlobe() {
+	<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+		<circle cx="12" cy="12" r="9"></circle>
+		<path d="M3 12h18M12 3c2.5 2.8 2.5 15.2 0 18M12 3c-2.5 2.8-2.5 15.2 0 18"></path>
+	</svg>
 }
 
 // count writes "2,956 teas": thousands grouped, the way the stores write prices.

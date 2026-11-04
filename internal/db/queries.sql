@@ -42,24 +42,33 @@ ON CONFLICT (offer_id, seen_at) DO NOTHING;
 -- name: ListCoffees :many
 SELECT x.slug, x.title, x.image_url, x.roaster_name, x.size_label, x.weight_grams, x.currency,
        x.price_minor, x.compare_at_minor, x.low30, x.usual, x.tracked_since, x.lowest_tracked, x.offer_id,
-       x.handle, x.roaster_url, x.variant_id
+       x.handle, x.roaster_url, x.variant_id, x.own_price, x.store_currency
 FROM (
     SELECT DISTINCT ON (c.id)
         c.slug, c.title, c.image_url, r.name AS roaster_name, o.id AS offer_id,
         c.handle, r.base_url AS roaster_url, o.variant_id,
         o.size_label, o.weight_grams, o.currency,
         s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
-        s.low30, s.usual, s.tracked_since, s.lowest_tracked
+        s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.own_price, r.currency AS store_currency
     FROM coffees c
     JOIN roasters r ON r.id = c.roaster_id
     JOIN offers o ON o.coffee_id = c.id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
     JOIN offer_summaries s ON s.offer_id = o.id
     WHERE s.latest_available AND r.kind = @kind
-    ORDER BY c.id, o.weight_grams
+      AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL))
+    -- The size a row shows: a real drop first, then a store sale, then the
+    -- smallest bag, so a coffee whose 1 kg bag dropped isn't listed by its
+    -- unchanged 250 g bag and sorted among the full prices.
+    ORDER BY c.id, (s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) DESC, (s.latest_compare_at IS NOT NULL) DESC, o.weight_grams
 ) x
--- Grouped by store, like a café menu lists its producers; the page shows a
--- store's name once above its products.
-ORDER BY x.roaster_name, x.title, x.slug
+-- Real drops first, deepest first (the same arithmetic as pricing.DropPercent:
+-- below the usual price, rounded down; never a converted price that only
+-- followed the exchange rate), then grouped by store, like a café
+-- menu lists its producers. @show narrows the list to real drops or to the
+-- store's own sales (empty = everything).
+ORDER BY (x.usual > x.price_minor AND x.own_price IN ('', 'dropped')) DESC,
+         (CASE WHEN x.usual > x.price_minor AND x.own_price IN ('', 'dropped') THEN (x.usual - x.price_minor) * 100 / x.usual ELSE 0 END) DESC,
+         x.roaster_name, x.title, x.slug
 LIMIT @page_size OFFSET @skip;
 
 -- name: CountCoffees :one
@@ -68,11 +77,12 @@ FROM offers o
 JOIN offer_summaries s ON s.offer_id = o.id
 JOIN coffees c ON c.id = o.coffee_id
 JOIN roasters r ON r.id = c.roaster_id
-WHERE o.market = @market AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = @kind;
+WHERE o.market = @market AND o.last_seen_at > now() - interval '48 hours' AND s.latest_available AND r.kind = @kind
+  AND (@show::text = '' OR (@show = 'drops' AND s.usual > s.latest_price AND s.own_price IN ('', 'dropped')) OR (@show = 'sales' AND s.latest_compare_at IS NOT NULL));
 
 -- name: CoffeeBySlug :one
 SELECT c.id, c.slug, c.title, c.product_type, c.image_url, c.handle,
-       r.name AS roaster_name, r.base_url AS roaster_url, r.kind
+       r.name AS roaster_name, r.base_url AS roaster_url, r.kind, r.currency AS store_currency
 FROM coffees c
 JOIN roasters r ON r.id = c.roaster_id
 WHERE c.slug = $1;
@@ -82,7 +92,7 @@ WHERE c.slug = $1;
 SELECT o.id, o.size_label, o.weight_grams, o.currency, o.variant_id,
        s.latest_price AS price_minor, s.latest_compare_at AS compare_at_minor,
        s.latest_available AS available, s.latest_seen_at AS seen_at,
-       s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.last_available
+       s.low30, s.usual, s.tracked_since, s.lowest_tracked, s.last_available, s.own_price
 FROM offers o
 JOIN offer_summaries s ON s.offer_id = o.id
 WHERE o.coffee_id = @coffee_id AND o.market = @market AND o.last_seen_at > now() - interval '48 hours'
@@ -100,10 +110,20 @@ ORDER BY o.weight_grams;
 --     window; 0 when there is none yet ("not enough history").
 --   * tracked_since / lowest_tracked: where tracking starts (the gap restart,
 --     else the first reading ever) and the lowest price since then.
+--   * own_price: for an offer shown in another currency than the store's own
+--     (Shopify converts it at the day's rate), whether the same size's price
+--     in the store's own currency dropped too ('dropped'), didn't ('no-drop')
+--     or can't be compared ('unknown': not read in that currency, or too
+--     new); '' for an offer in the store's own currency. Only '' and
+--     'dropped' may show a drop (pricing.Summary.RateOnly).
 -- Prices are > 0 by CHECK, so 0 always means "none".
 -- name: RefreshOfferSummaries :execrows
 WITH o AS (
-    SELECT id FROM offers WHERE last_seen_at > now() - interval '48 hours'
+    SELECT f.id, f.coffee_id, f.weight_grams, f.currency, r.currency AS store_currency
+    FROM offers f
+    JOIN coffees c ON c.id = f.coffee_id
+    JOIN roasters r ON r.id = c.roaster_id
+    WHERE f.last_seen_at > now() - interval '48 hours'
 ),
 seg AS (
     SELECT a.offer_id,
@@ -143,25 +163,49 @@ alltime AS (
     FROM price_points p
     JOIN o ON o.id = p.offer_id
     GROUP BY p.offer_id
+),
+calc AS (
+    SELECT o.id, o.coffee_id, o.weight_grams, o.currency, o.store_currency,
+           lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
+           COALESCE(low.low30, 0) AS low30, COALESCE(usual.usual, 0) AS usual,
+           COALESCE(seg.restart, alltime.first) AS tracked_since,
+           COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0) AS lowest_tracked,
+           alltime.last_available
+    FROM o
+    JOIN LATERAL (
+        SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
+        FROM price_points p
+        WHERE p.offer_id = o.id
+        ORDER BY p.seen_at DESC
+        LIMIT 1
+    ) lp ON true
+    JOIN alltime ON alltime.offer_id = o.id
+    LEFT JOIN seg ON seg.offer_id = o.id
+    LEFT JOIN low ON low.offer_id = o.id
+    LEFT JOIN usual ON usual.offer_id = o.id
+),
+-- Each size in the store's own currency. One market per currency makes it
+-- one row per size; DISTINCT ON keeps the join below from ever doubling an
+-- offer, which the upsert would refuse.
+own AS (
+    SELECT DISTINCT ON (coffee_id, weight_grams) coffee_id, weight_grams, currency, usual, price_minor
+    FROM calc
+    WHERE currency = store_currency
+    ORDER BY coffee_id, weight_grams, id
 )
 INSERT INTO offer_summaries (offer_id, latest_price, latest_compare_at, latest_available, latest_seen_at,
-                             low30, usual, tracked_since, lowest_tracked, last_available, refreshed_at)
-SELECT o.id, lp.price_minor, lp.compare_at_minor, lp.available, lp.seen_at,
-       COALESCE(low.low30, 0), COALESCE(usual.usual, 0), COALESCE(seg.restart, alltime.first),
-       COALESCE(CASE WHEN seg.restart IS NULL THEN alltime.low ELSE low.low30 END, 0),
-       alltime.last_available, now()
-FROM o
-JOIN LATERAL (
-    SELECT p.price_minor, p.compare_at_minor, p.available, p.seen_at
-    FROM price_points p
-    WHERE p.offer_id = o.id
-    ORDER BY p.seen_at DESC
-    LIMIT 1
-) lp ON true
-JOIN alltime ON alltime.offer_id = o.id
-LEFT JOIN seg ON seg.offer_id = o.id
-LEFT JOIN low ON low.offer_id = o.id
-LEFT JOIN usual ON usual.offer_id = o.id
+                             low30, usual, tracked_since, lowest_tracked, last_available, own_price, refreshed_at)
+SELECT x.id, x.price_minor, x.compare_at_minor, x.available, x.seen_at,
+       x.low30, x.usual, x.tracked_since, x.lowest_tracked, x.last_available,
+       CASE
+           WHEN x.currency = x.store_currency THEN ''
+           WHEN own.usual IS NULL OR own.usual = 0 THEN 'unknown'
+           WHEN own.price_minor < own.usual THEN 'dropped'
+           ELSE 'no-drop'
+       END,
+       now()
+FROM calc x
+LEFT JOIN own ON own.coffee_id = x.coffee_id AND own.weight_grams = x.weight_grams AND own.currency = x.store_currency
 ON CONFLICT (offer_id) DO UPDATE
 SET latest_price = EXCLUDED.latest_price,
     latest_compare_at = EXCLUDED.latest_compare_at,
@@ -172,6 +216,7 @@ SET latest_price = EXCLUDED.latest_price,
     tracked_since = EXCLUDED.tracked_since,
     lowest_tracked = EXCLUDED.lowest_tracked,
     last_available = EXCLUDED.last_available,
+    own_price = EXCLUDED.own_price,
     refreshed_at = EXCLUDED.refreshed_at;
 
 -- A finished lot leaves the sitemap 30 days after it was last in stock

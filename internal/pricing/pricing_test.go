@@ -7,6 +7,28 @@ import (
 
 var now = time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
 
+// A converted price under its usual one is a drop only when the store's own
+// price dropped too; otherwise it is the exchange rate (Bocca, 4 Nov 2026:
+// EUR 39.40 every day, USD 45 and 46 by turns).
+func TestConvertedPriceDropsOnlyWithTheStoresOwnPrice(t *testing.T) {
+	base := Summary{Latest: 4500, Low30: 4500, Usual: 4600, TrackedSince: now.AddDate(0, 0, -40), LowestTracked: 4500}
+	for _, own := range []string{OwnNoDrop, OwnUnknown} {
+		s := base
+		s.OwnPrice = own
+		if _, since := s.LowestSince(now); s.DropPercent() != 0 || s.LowestIn30Days() || since || !s.RateOnly() {
+			t.Errorf("own price %q: drop %d%%, low30 %v, since %v; a converted price that only followed the rate must show nothing",
+				own, s.DropPercent(), s.LowestIn30Days(), since)
+		}
+	}
+	for _, own := range []string{OwnCurrency, OwnDropped} {
+		s := base
+		s.OwnPrice = own
+		if s.RateOnly() || s.DropPercent() != 2 || !s.LowestIn30Days() {
+			t.Errorf("own price %q: drop %d%%, low30 %v; want the 2%% drop and the 30-day low", own, s.DropPercent(), s.LowestIn30Days())
+		}
+	}
+}
+
 func TestNoUsualPriceMeansNoDiscount(t *testing.T) {
 	s := Summary{Latest: 1800, Low30: 1800, Usual: 0}
 	if s.DropPercent() != 0 || s.LowestIn30Days() {

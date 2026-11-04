@@ -2,6 +2,7 @@
 package web
 
 import (
+	"context"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -75,7 +77,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var links []views.MarketLink
 	for _, m := range market.All {
-		link := views.MarketLink{Name: m.Name, URL: "/" + m.Code + "/", TeaURL: "/" + m.Code + "/" + teaKind.listPath, Note: m.Hint}
+		link := views.MarketLink{Name: m.Name, Short: m.Short, URL: "/" + m.Code + "/", TeaURL: "/" + m.Code + "/" + teaKind.listPath, Note: m.Hint}
 		var err error
 		if link.Coffees, err = s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: coffeeKind.name}); err != nil {
 			s.fail(w, r, err)
@@ -105,7 +107,32 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + "/"})
-	s.render(w, r, http.StatusOK, views.Home(p, len(stores), links))
+	// Today's deals: the US coffee listing's real drops, deepest first; the
+	// first one is the hero's "top deal". On a day without a real coffee drop
+	// the tea listing's take their place, so the hero isn't left half empty:
+	// real coffee drops are rare once a converted price counts only with the
+	// store's own drop (4 Nov 2026: US coffee 0, US tea 61).
+	k := coffeeKind
+	deals, err := s.Q.ListCoffees(ctx, db.ListCoffeesParams{Market: market.US.Code, Kind: k.name, Show: "drops", PageSize: 4})
+	if err == nil && len(deals) == 0 {
+		k = teaKind
+		deals, err = s.Q.ListCoffees(ctx, db.ListCoffeesParams{Market: market.US.Code, Kind: k.name, Show: "drops", PageSize: 4})
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	cards, err := s.cards(ctx, market.US, k, deals)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	h := views.HomeData{Stores: len(stores), Markets: links, Deals: cards, DealsKind: k.name,
+		DealsURL: "/" + market.US.Code + "/" + k.listPath + "?show=drops", Labels: k.labels}
+	if len(deals) > 0 && deals[0].ImageUrl != nil {
+		h.TopImage = cdnImage(*deals[0].ImageUrl, 720)
+	}
+	s.render(w, r, http.StatusOK, views.Home(p, h))
 }
 
 // inMarkets fills in what every page of a market shares: hreflang
@@ -214,6 +241,13 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 	}
 	// Page 1 is the bare market URL; ?page=1 or a page past the end is not a
 	// page of ours (404), so each listing page has exactly one address.
+	// show narrows the list to real drops or to the store's own sales. Those
+	// views are not indexed: they repeat products of the full list.
+	show := r.URL.Query().Get("show")
+	if show != "" && show != "drops" && show != "sales" {
+		s.notFound(w, r)
+		return
+	}
 	page := 1
 	if raw := r.URL.Query().Get("page"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -223,75 +257,46 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		}
 		page = n
 	}
-	total, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name})
-	if err != nil {
-		s.fail(w, r, err)
-		return
+	counts := map[string]int64{}
+	for _, f := range []string{"", "drops", "sales"} {
+		n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: f})
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		counts[f] = n
 	}
+	total := counts[show]
 	pages := max(1, int((total+pageSize-1)/pageSize))
 	if page > pages {
 		s.notFound(w, r)
 		return
 	}
 	rows, err := s.Q.ListCoffees(r.Context(), db.ListCoffeesParams{
-		Market: m.Code, Kind: k.name, PageSize: pageSize, Skip: int32((page - 1) * pageSize),
+		Market: m.Code, Kind: k.name, Show: show, PageSize: pageSize, Skip: int32((page - 1) * pageSize),
 	})
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	now := time.Now()
-	// The rows' small charts come from one history query for the whole page,
-	// never one per row.
-	ids := make([]int64, len(rows))
-	for i, c := range rows {
-		ids[i] = c.OfferID
-	}
-	hist, err := s.Q.PriceHistory(r.Context(), ids)
+	cards, err := s.cards(r.Context(), m, k, rows)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	history := map[int64][]pricePoint{}
-	for _, h := range hist {
-		history[h.OfferID] = append(history[h.OfferID], pricePoint{At: h.SeenAt.Time, Minor: h.PriceMinor})
-	}
-	cards := make([]views.Card, 0, len(rows))
-	for _, c := range rows {
-		card := views.Card{
-			URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
-			Size: c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
-			PerUnit: k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency),
-			BuyURL:  fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
-			Chart:   sparkline(history[c.OfferID], now, 160, 44, c.Title+" price history"),
-		}
-		if c.Usual > 0 {
-			card.Usual = money(c.Usual, c.Currency)
-		}
-		// Same rules as the coffee page, from the same summary row, so a card
-		// and its page can never disagree.
-		sum := pricing.Summary{Latest: c.PriceMinor, Low30: c.Low30, Usual: c.Usual,
-			TrackedSince: c.TrackedSince.Time, LowestTracked: c.LowestTracked}
-		card.RealDrop = sum.DropPercent()
-		if since, ok := sum.LowestSince(now); ok {
-			card.LowestSince = since.UTC().Format("Jan 2, 2006")
-		} else {
-			card.LowestIn30 = sum.LowestIn30Days()
-		}
-		if c.ImageUrl != nil {
-			card.ImageURL = cdnImage(*c.ImageUrl, 240) // a 120 px image well, sharp on 2x screens
-		}
-		if c.CompareAtMinor != nil {
-			card.StoreWas = money(*c.CompareAtMinor, c.Currency)
-		}
-		cards = append(cards, card)
-	}
 	base := "/" + m.Code + "/" + k.listPath
 	pageURL := func(n int) string {
-		if n == 1 {
+		q := url.Values{}
+		if show != "" {
+			q.Set("show", show)
+		}
+		if n > 1 {
+			q.Set("page", strconv.Itoa(n))
+		}
+		if len(q) == 0 {
 			return base
 		}
-		return fmt.Sprintf("%s?page=%d", base, n)
+		return base + "?" + q.Encode()
 	}
 	pg := views.Pager{Page: page, Pages: pages, Total: int(total)}
 	if page > 1 {
@@ -311,6 +316,7 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		Title: title + " — CupProof", Lang: m.Lang,
 		Description: fmt.Sprintf(k.desc, total),
 		Canonical:   url,
+		NoIndex:     show != "",
 		Nav:         nav(m, k.name),
 	}
 	// Page 1 of a listing has a sibling in every market. Page N does not:
@@ -318,14 +324,177 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 	// so a later page names only itself.
 	paths := map[string]string{m.Code: pageURL(page)}
 	xDefault := ""
-	if page == 1 {
+	if page == 1 && show == "" {
 		for _, other := range market.All {
 			paths[other.Code] = "/" + other.Code + "/" + k.listPath
 		}
 		xDefault = "/"
 	}
 	p = s.inMarkets(p, m, k, paths, xDefault)
-	s.render(w, r, http.StatusOK, views.MarketHome(p, fmt.Sprintf(k.heading, m.Name), fmt.Sprintf(k.lede, total), cards, pg, k.labels))
+	filter := func(label, f, dot string) views.Filter {
+		u := base
+		if f != "" {
+			u += "?show=" + f
+		}
+		return views.Filter{Label: label, URL: u, Count: counts[f], Current: f == show, Dot: dot}
+	}
+	l := views.Listing{
+		Heading: m.Short + " " + k.name, Market: m.Short, Section: k.nav, MarketURL: "/" + m.Code + "/",
+		PricesIn: "Prices in " + currencyName(m.Currency) + ", checked daily",
+		Filters:  []views.Filter{filter("All", "", ""), filter("Real drops", "drops", "green"), filter("Store sales", "sales", "amber")},
+		Cards:    cards, Pager: pg, Labels: k.labels,
+	}
+	s.render(w, r, http.StatusOK, views.MarketHome(p, l))
+}
+
+// cards turns one page of ListCoffees into listing rows, with one history
+// query for all of them, never one per row.
+func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.ListCoffeesRow) ([]views.Card, error) {
+	ids := make([]int64, len(rows))
+	for i, c := range rows {
+		ids[i] = c.OfferID
+	}
+	hist, err := s.Q.PriceHistory(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	history := map[int64][]pricePoint{}
+	for _, h := range hist {
+		history[h.OfferID] = append(history[h.OfferID], pricePoint{At: h.SeenAt.Time, Minor: h.PriceMinor})
+	}
+	now := time.Now()
+	cards := make([]views.Card, 0, len(rows))
+	for _, c := range rows {
+		card := views.Card{
+			URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
+			Size: c.SizeLabel, Price: money(c.PriceMinor, c.Currency),
+			PerUnit: k.perUnit(c.PriceMinor, c.WeightGrams, c.Currency),
+			BuyURL:  fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
+			Chart:   sparkline(history[c.OfferID], now, 160, 44, c.Title+" price history"),
+			DetailChart: historyChart(history[c.OfferID], now, c.Usual, c.Currency,
+				c.Title+" price history", strconv.FormatInt(c.OfferID, 10)),
+		}
+		if c.Usual > 0 {
+			card.Usual = money(c.Usual, c.Currency)
+		}
+		// Same rules as the coffee page, from the same summary row, so a card
+		// and its page can never disagree.
+		sum := pricing.Summary{Latest: c.PriceMinor, Low30: c.Low30, Usual: c.Usual,
+			TrackedSince: c.TrackedSince.Time, LowestTracked: c.LowestTracked, OwnPrice: c.OwnPrice}
+		card.Lower = c.PriceMinor < c.Usual && !sum.RateOnly()
+		card.RealDrop = sum.DropPercent()
+		if since, ok := sum.LowestSince(now); ok {
+			card.LowestSince = since.UTC().Format("Jan 2, 2006")
+		} else {
+			card.LowestIn30 = sum.LowestIn30Days()
+		}
+		if c.ImageUrl != nil {
+			card.ImageURL = cdnImage(*c.ImageUrl, 240) // a 120 px image well, sharp on 2x screens
+		}
+		if c.CompareAtMinor != nil {
+			card.StoreWas = money(*c.CompareAtMinor, c.Currency)
+		}
+		card.Reading = reading(sum, now, c.CompareAtMinor, c.Currency, orEmpty(c.StoreCurrency))
+		cards = append(cards, card)
+	}
+	return cards, nil
+}
+
+// reading is the one-sentence verdict of a listing row and of a product
+// page, from the same summary, so the two can never disagree. storeCurrency
+// is the store's own currency, named when a converted price needs explaining.
+func reading(sum pricing.Summary, now time.Time, storeWas *int64, currency, storeCurrency string) string {
+	price := money(sum.Latest, currency)
+	var s string
+	switch {
+	// Lower, but only as converted: say why that is no drop.
+	case sum.Latest < sum.Usual && sum.RateOnly():
+		own := "the store's own price"
+		if storeCurrency != "" {
+			own += " in " + currencyName(storeCurrency)
+		}
+		s = fmt.Sprintf("%s is %s under its usual %s", price, money(sum.Usual-sum.Latest, currency), money(sum.Usual, currency))
+		if sum.OwnPrice == pricing.OwnNoDrop {
+			s += ", but " + own + " didn't drop: the difference is the exchange rate."
+		} else {
+			s += ", but we can't compare it with " + own + ", so it may be only the exchange rate."
+		}
+	// Any price under the usual one, also a drop too small to show as a whole
+	// percent: "at its usual price" would be false there.
+	case sum.Latest < sum.Usual:
+		s = fmt.Sprintf("%s is %s under its usual %s", price, money(sum.Usual-sum.Latest, currency), money(sum.Usual, currency))
+		if since, ok := sum.LowestSince(now); ok {
+			s += ", and the lowest since " + since.UTC().Format("Jan 2, 2006")
+		} else if sum.LowestIn30Days() {
+			s += ", and the lowest price in the last 30 days"
+		}
+		s += "."
+	case sum.Usual == 0:
+		s = "Not enough history yet to judge"
+		if !sum.TrackedSince.IsZero() {
+			s += "; tracked since " + sum.TrackedSince.UTC().Format("Jan 2, 2006")
+		}
+		s += "."
+	case sum.Latest > sum.Usual:
+		s = fmt.Sprintf("%s is above its usual %s.", price, money(sum.Usual, currency))
+	default:
+		s = fmt.Sprintf("At its usual price of %s.", money(sum.Usual, currency))
+	}
+	if storeWas != nil {
+		s += " The store calls it a sale, from " + money(*storeWas, currency) + "."
+	}
+	return s
+}
+
+// featured is the size a coffee page opens on: the one its listing row
+// shows (ListCoffees picks it the same way), so a visitor who clicked a 1 kg
+// drop doesn't land on the unchanged 250 g bag. In stock first; then a price
+// under the usual one, then a store sale, then the smallest bag.
+func featured(offers []views.Offer) int {
+	best, rank := 0, -1
+	for i, o := range offers {
+		if !o.Available {
+			continue
+		}
+		r := 0
+		switch {
+		case o.Lower:
+			r = 2
+		case o.StoreWas != "":
+			r = 1
+		}
+		if r > rank { // strict: the smaller bag wins a tie, offers come by weight
+			best, rank = i, r
+		}
+	}
+	return best
+}
+
+// currencyName is how a listing names its prices' currency.
+func currencyName(code string) string {
+	switch code {
+	case "USD":
+		return "US dollars"
+	case "GBP":
+		return "pounds"
+	case "EUR":
+		return "euros"
+	case "DKK":
+		return "Danish kroner"
+	case "NOK":
+		return "Norwegian kroner"
+	case "SEK":
+		return "Swedish kronor"
+	}
+	return code
+}
+
+// orEmpty reads a nullable text column.
+func orEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // pageSize is the number of products per listing page.
@@ -368,7 +537,8 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		return
 	}
 	view := views.Coffee{Title: c.Title, Roaster: c.RoasterName, RoasterURL: c.RoasterUrl,
-		BackURL: "/" + m.Code + "/" + k.listPath, Labels: k.labels}
+		BackURL: "/" + m.Code + "/" + k.listPath, Labels: k.labels, Section: m.Short + " " + k.name,
+		Checked: time.Now().UTC().Format("Jan 2")}
 	if c.ImageUrl != nil {
 		view.ImageURL = cdnImage(*c.ImageUrl, 960)
 	}
@@ -389,7 +559,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 	now := time.Now()
 	ld := productLD{Context: "https://schema.org", Type: "Product", Name: c.Title,
 		Brand: &thing{Type: "Brand", Name: c.RoasterName}, Image: view.ImageURL}
-	for _, o := range rows {
+	for i, o := range rows {
 		buy := fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID)
 		ov := views.Offer{
 			Size: o.SizeLabel, Price: money(o.PriceMinor, o.Currency),
@@ -399,7 +569,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 			ov.StoreWas = money(*o.CompareAtMinor, o.Currency)
 		}
 		sum := pricing.Summary{Latest: o.PriceMinor, Low30: o.Low30, Usual: o.Usual,
-			TrackedSince: o.TrackedSince.Time, LowestTracked: o.LowestTracked}
+			TrackedSince: o.TrackedSince.Time, LowestTracked: o.LowestTracked, OwnPrice: o.OwnPrice}
 		if o.Usual > 0 {
 			ov.Usual = money(o.Usual, o.Currency)
 		}
@@ -408,7 +578,37 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		if since, ok := sum.LowestSince(now); ok {
 			ov.LowestSince = since.UTC().Format("Jan 2, 2006")
 		}
+		ov.Anchor = fmt.Sprintf("size-%d", i+1)
+		ov.Reading = reading(sum, now, o.CompareAtMinor, o.Currency, orEmpty(c.StoreCurrency))
+		ov.Today = now.UTC().Format("Jan 2")
+		if o.Low30 > 0 {
+			ov.Low30 = money(o.Low30, o.Currency)
+		}
+		if o.Usual > 0 {
+			switch diff := o.PriceMinor - o.Usual; {
+			case diff < 0:
+				ov.Against = "\u2212" + money(-diff, o.Currency)
+				ov.AgainstNote = fmt.Sprintf("%.1f%% lower", float64(-diff)*100/float64(o.Usual))
+				switch {
+				case !sum.RateOnly():
+					ov.Lower = true
+				case sum.OwnPrice == pricing.OwnNoDrop:
+					ov.AgainstNote += ", exchange rate"
+					ov.RateNote = "Exchange rate, not a price cut"
+				default:
+					ov.AgainstNote += ", not confirmed"
+					ov.RateNote = "Can't confirm a price cut"
+				}
+			case diff > 0:
+				ov.Against, ov.AgainstNote = "+"+money(diff, o.Currency),
+					fmt.Sprintf("%.1f%% higher", float64(diff)*100/float64(o.Usual))
+			default:
+				ov.Against, ov.AgainstNote = "Same", "As usual"
+			}
+		}
 		if pts := history[o.ID]; len(pts) > 0 {
+			ov.Big = historyChart(pts, now, o.Usual, o.Currency,
+				fmt.Sprintf("%s price since %s", o.SizeLabel, pts[0].At.UTC().Format("Jan 2, 2006")), ov.Anchor)
 			ov.Since = pts[0].At.UTC().Format("Jan 2, 2006")
 			// Wide and flat, like a roast curve: the page's CSS scales it to
 			// the column, the viewBox keeps the proportions.
@@ -427,6 +627,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		ld.Offers = append(ld.Offers, offerLD{Type: "Offer", Price: decimal(o.PriceMinor), PriceCurrency: o.Currency,
 			Availability: availability, URL: buy, Seller: &thing{Type: "Organization", Name: c.RoasterName}})
 	}
+	view.Featured = featured(view.Offers)
 	ldJSON, err := json.Marshal(ld) // HTML-escapes <, > and &, safe inside <script>
 	if err != nil {
 		s.fail(w, r, err)
