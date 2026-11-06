@@ -649,22 +649,12 @@ templ CoffeePage(p Page, c Coffee) {
 						</a>
 					</div>
 				</header>
-				if len(c.Offers) > 1 {
-					<nav class="size-tabs" aria-label="Sizes">
-						for i, s := range c.Offers {
-							<a
-								href={ templ.SafeURL("#" + s.Anchor) }
-								if i == c.Featured {
-									aria-current="true"
-								}
-							>{ s.Size }</a>
-						}
-					</nav>
-				}
-				@sizeSheet(c, c.Offers[c.Featured])
-				for i, s := range c.Offers {
+				@sizePick(c, c.Featured)
+				@sizeSheet(c, c.Featured)
+				for i := range c.Offers {
 					if i != c.Featured {
-						@sizeSheet(c, s)
+						@sizePick(c, i)
+						@sizeSheet(c, i)
 					}
 				}
 				<div class="sheet-actions">
@@ -701,9 +691,48 @@ templ CoffeePage(p Page, c Coffee) {
 	}
 }
 
-// sizeSheet is one size's price analysis.
-templ sizeSheet(c Coffee, s Offer) {
+// sizePick is the radio that shows size i's sheet, right before that sheet.
+// The size chips switch sizes in place, without a script: they are labels of
+// these radios, and one rule (.size-pick:not(:checked) + .sheet-size) hides
+// the other sheets, for any number of sizes. The chips used to be links to
+// #size-N anchors, so picking a size jumped down the page to its sheet (6 Nov,
+// reported). The radios are position: fixed in the CSS: clicking a label
+// focuses its radio, and a radio sitting below the visible sheet would scroll
+// the page down to it all the same. A single size gets no radio and no chips.
+templ sizePick(c Coffee, i int) {
+	if len(c.Offers) > 1 {
+		<input
+			class="size-pick"
+			type="radio"
+			name="size"
+			id={ "pick-" + c.Offers[i].Anchor }
+			aria-label={ c.Offers[i].Size }
+			if i == c.Featured {
+				checked
+			}
+		/>
+	}
+}
+
+// sizeSheet is one size's price analysis. Each sheet carries the size chips
+// with its own size marked: only the picked sheet shows, so the marked chip is
+// always the picked one. The chips are hidden from screen readers; the radios,
+// named by aria-label, are the control there.
+templ sizeSheet(c Coffee, i int) {
+	{{ s := c.Offers[i] }}
 	<section class="sheet-size" id={ s.Anchor }>
+		if len(c.Offers) > 1 {
+			<div class="size-tabs" aria-hidden="true">
+				for j, o := range c.Offers {
+					<label
+						for={ "pick-" + o.Anchor }
+						if j == i {
+							class="current"
+						}
+					>{ o.Size }</label>
+				}
+			</div>
+		}
 		<div class="sheet-row">
 			<div>
 				<p class="kicker">Real price history</p>

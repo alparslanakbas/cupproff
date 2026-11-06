@@ -142,8 +142,63 @@ func historyChart(points []pricePoint, now time.Time, usual int64, currency stri
 	fmt.Fprintf(&b, `<circle class="dot" cx="100%%" cy="%.1f%%" r="4.5"/>`, 100*share(points[len(points)-1].Minor))
 	fmt.Fprintf(&b, `<text class="axis" x="0" y="100%%" dy="20">%s</text>`, start.UTC().Format("Jan 2"))
 	fmt.Fprintf(&b, `<text class="axis" x="100%%" y="100%%" dy="20" text-anchor="end">%s</text>`, end.UTC().Format("Jan 2"))
+	readings(&b, points,
+		func(t time.Time) float64 { return 100 * x(t) / w },
+		func(v int64) float64 { return 100 * share(v) },
+		currency)
 	b.WriteString(`</svg>`)
 	return b.String()
+}
+
+// readings lets a pointer read the chart: each reading owns the strip of the
+// box nearest to it (split halfway to its neighbours), and hovering or tapping
+// the strip shows a guide, a dot and a tag with the reading's date and price.
+// The sister sites' charts pick the nearest point the same way with a script;
+// here it is SVG and CSS, so the page still runs none. Positions are
+// percentages of the box, like the labels; the tag is a nested SVG placed at
+// the point, so its pixel offsets don't stretch. Near an edge the tag leans
+// inward and near the top it hangs below the point, so it is never clipped.
+func readings(b *strings.Builder, points []pricePoint, xPct func(time.Time) float64, yPct func(int64) float64, currency string) {
+	n := len(points)
+	for i, p := range points {
+		px, py := xPct(p.At), yPct(p.Minor)
+		left, right := 0.0, 100.0
+		if i > 0 {
+			left = (xPct(points[i-1].At) + px) / 2
+		}
+		if i < n-1 {
+			right = (px + xPct(points[i+1].At)) / 2
+		}
+		if right <= left {
+			continue
+		}
+		date := p.At.UTC().Format("Jan 2, 2006")
+		if (i > 0 && sameDay(points[i-1].At, p.At)) || (i < n-1 && sameDay(points[i+1].At, p.At)) {
+			date = p.At.UTC().Format("Jan 2, 15:04 UTC") // two readings that day: the time tells them apart
+		}
+		rectX, anchor := -58.0, "middle"
+		switch {
+		case px < 12:
+			rectX, anchor = -10, "start"
+		case px > 88:
+			rectX, anchor = -106, "end"
+		}
+		rectY, dateY, priceY := -54.0, -37.0, -20.0
+		if py < 30 {
+			rectY, dateY, priceY = 12, 29, 46
+		}
+		fmt.Fprintf(b, `<g class="hit"><rect class="zone" x="%.2f%%" y="0" width="%.2f%%" height="100%%"/>`, left, right-left)
+		fmt.Fprintf(b, `<g class="tip"><line x1="%.2f%%" x2="%.2f%%" y1="0" y2="100%%"/><circle cx="%.2f%%" cy="%.2f%%" r="4.5"/>`, px, px, px, py)
+		fmt.Fprintf(b, `<svg x="%.2f%%" y="%.2f%%" overflow="visible"><rect x="%.0f" y="%.0f" width="116" height="42" rx="8"/>`, px, py, rectX, rectY)
+		fmt.Fprintf(b, `<text y="%.0f" text-anchor="%s">%s</text><text class="v" y="%.0f" text-anchor="%s">%s</text></svg></g></g>`,
+			dateY, anchor, date, priceY, anchor, money(p.Minor, currency))
+	}
+}
+
+func sameDay(a, b time.Time) bool {
+	ay, am, ad := a.UTC().Date()
+	by, bm, bd := b.UTC().Date()
+	return ay == by && am == bm && ad == bd
 }
 
 func escapeAttr(s string) string {
