@@ -545,9 +545,17 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		s.notFound(w, r)
 		return
 	}
+	// "Price checked" is when we last read this product, not today: a store
+	// that failed to load keeps the date of its last reading, as its list rows do.
+	var seen time.Time
+	for _, o := range rows {
+		if o.SeenAt.Valid && o.SeenAt.Time.After(seen) {
+			seen = o.SeenAt.Time
+		}
+	}
 	view := views.Coffee{Title: c.Title, Roaster: c.RoasterName, RoasterURL: c.RoasterUrl,
 		BackURL: "/" + m.Code + "/" + k.listPath, Labels: k.labels, Section: m.Short + " " + k.name,
-		Checked: time.Now().UTC().Format("Jan 2")}
+		Checked: seen.UTC().Format("Jan 2")}
 	if c.ImageUrl != nil {
 		view.ImageURL = cdnImage(*c.ImageUrl, 960)
 	}

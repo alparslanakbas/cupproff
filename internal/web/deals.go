@@ -148,6 +148,17 @@ func (s *Server) readList(w http.ResponseWriter, r *http.Request, m market.Marke
 		}
 		st.page = n
 	}
+	// One address per view: the filter form sends its empty fields
+	// ("?roaster=&cat=") in its own order, so the visitor is sent on to the
+	// view's own address, the one its links and canonical use.
+	if want := listQuery(st); r.URL.RawQuery != want {
+		target := base
+		if want != "" {
+			target += "?" + want
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return st, false
+	}
 	st, found, err := s.buildList(r.Context(), m, k, base, st, storeID, pageSize)
 	switch {
 	case err != nil:
@@ -158,6 +169,21 @@ func (s *Server) readList(w http.ResponseWriter, r *http.Request, m market.Marke
 		return st, false
 	}
 	return st, true
+}
+
+// listQuery is the query string of a list view's own address: the set
+// values only, in a fixed order, as buildList's links write them.
+func listQuery(st listState) string {
+	q := url.Values{}
+	for key, v := range map[string]string{"show": st.show, "cat": st.cat, "roaster": st.roaster, "sort": st.sort, "q": st.q} {
+		if v != "" {
+			q.Set(key, v)
+		}
+	}
+	if st.page > 1 {
+		q.Set("page", strconv.Itoa(st.page))
+	}
+	return q.Encode()
 }
 
 // buildList runs a list's queries for st and builds its rows and controls;
