@@ -43,7 +43,7 @@ func (s *Server) info(slug string) http.HandlerFunc {
 			facts.Stores = len(stores)
 			for _, m := range market.All {
 				for _, k := range kinds {
-					n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name})
+					n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Key, Kind: k.name})
 					if err != nil {
 						s.fail(w, r, err)
 						return

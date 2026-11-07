@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/alparslanakbas/cupproof/internal/i18n"
 )
 
 // pricePoint is one stored observation.
@@ -88,7 +90,7 @@ func stepPath(points []pricePoint, now time.Time, width, height int) (d string, 
 // the box, so they keep their size. A fixed viewBox for the whole chart drew
 // 4 px labels on a phone and 16 px ones on a desktop. id keeps the
 // gradient's id unique on the page.
-func historyChart(points []pricePoint, now time.Time, usual int64, currency string, label, id string) string {
+func historyChart(lang string, points []pricePoint, now time.Time, usual int64, currency string, label, id string) string {
 	if len(points) < 2 {
 		return ""
 	}
@@ -137,12 +139,12 @@ func historyChart(points []pricePoint, now time.Time, usual int64, currency stri
 		labels = append(labels, lo)
 	}
 	for _, v := range labels {
-		fmt.Fprintf(&b, `<text class="axis" x="-10" y="%.1f%%" text-anchor="end" dominant-baseline="middle">%s</text>`, 100*share(v), money(v, currency))
+		fmt.Fprintf(&b, `<text class="axis" x="-10" y="%.1f%%" text-anchor="end" dominant-baseline="middle">%s</text>`, 100*share(v), money(lang, v, currency))
 	}
 	fmt.Fprintf(&b, `<circle class="dot" cx="100%%" cy="%.1f%%" r="4.5"/>`, 100*share(points[len(points)-1].Minor))
-	fmt.Fprintf(&b, `<text class="axis" x="0" y="100%%" dy="20">%s</text>`, start.UTC().Format("Jan 2"))
-	fmt.Fprintf(&b, `<text class="axis" x="100%%" y="100%%" dy="20" text-anchor="end">%s</text>`, end.UTC().Format("Jan 2"))
-	readings(&b, points,
+	fmt.Fprintf(&b, `<text class="axis" x="0" y="100%%" dy="20">%s</text>`, i18n.Day(lang, start))
+	fmt.Fprintf(&b, `<text class="axis" x="100%%" y="100%%" dy="20" text-anchor="end">%s</text>`, i18n.Day(lang, end))
+	readings(lang, &b, points,
 		func(t time.Time) float64 { return 100 * x(t) / w },
 		func(v int64) float64 { return 100 * share(v) },
 		currency)
@@ -158,7 +160,7 @@ func historyChart(points []pricePoint, now time.Time, usual int64, currency stri
 // percentages of the box, like the labels; the tag is a nested SVG placed at
 // the point, so its pixel offsets don't stretch. Near an edge the tag leans
 // inward and near the top it hangs below the point, so it is never clipped.
-func readings(b *strings.Builder, points []pricePoint, xPct func(time.Time) float64, yPct func(int64) float64, currency string) {
+func readings(lang string, b *strings.Builder, points []pricePoint, xPct func(time.Time) float64, yPct func(int64) float64, currency string) {
 	n := len(points)
 	for i, p := range points {
 		px, py := xPct(p.At), yPct(p.Minor)
@@ -172,9 +174,9 @@ func readings(b *strings.Builder, points []pricePoint, xPct func(time.Time) floa
 		if right <= left {
 			continue
 		}
-		date := p.At.UTC().Format("Jan 2, 2006")
+		date := i18n.Date(lang, p.At)
 		if (i > 0 && sameDay(points[i-1].At, p.At)) || (i < n-1 && sameDay(points[i+1].At, p.At)) {
-			date = p.At.UTC().Format("Jan 2, 15:04 UTC") // two readings that day: the time tells them apart
+			date = i18n.DayTime(lang, p.At) + " UTC" // two readings that day: the time tells them apart
 		}
 		rectX, anchor := -58.0, "middle"
 		switch {
@@ -191,7 +193,7 @@ func readings(b *strings.Builder, points []pricePoint, xPct func(time.Time) floa
 		fmt.Fprintf(b, `<g class="tip"><line x1="%.2f%%" x2="%.2f%%" y1="0" y2="100%%"/><circle cx="%.2f%%" cy="%.2f%%" r="4.5"/>`, px, px, px, py)
 		fmt.Fprintf(b, `<svg x="%.2f%%" y="%.2f%%" overflow="visible"><rect x="%.0f" y="%.0f" width="116" height="42" rx="8"/>`, px, py, rectX, rectY)
 		fmt.Fprintf(b, `<text y="%.0f" text-anchor="%s">%s</text><text class="v" y="%.0f" text-anchor="%s">%s</text></svg></g></g>`,
-			dateY, anchor, date, priceY, anchor, money(p.Minor, currency))
+			dateY, anchor, date, priceY, anchor, money(lang, p.Minor, currency))
 	}
 }
 

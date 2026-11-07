@@ -1,0 +1,25 @@
+{
+  "checked.on": "Checked {date}",
+  "checked.today": "Checked today, {time} UTC",
+  "checked.yesterday": "Checked yesterday, {time} UTC",
+
+  "currency.DKK": "Danish kroner",
+  "currency.EUR": "euros",
+  "currency.GBP": "pounds",
+  "currency.NOK": "Norwegian kroner",
+  "currency.SEK": "Swedish kronor",
+  "currency.USD": "US dollars",
+
+  "reading.above": "{price} is above its usual {usual}.",
+  "reading.no_history": "Not enough history yet to judge.",
+  "reading.no_history.since": "Not enough history yet to judge; tracked since {date}.",
+  "reading.own_price": "the store's own price",
+  "reading.own_price_in": "the store's own price in {currency}",
+  "reading.rate_only.no_drop": "{price} is {diff} under its usual {usual}, but {own} didn't drop: the difference is the exchange rate.",
+  "reading.rate_only.unknown": "{price} is {diff} under its usual {usual}, but we can't compare it with {own}, so it may be only the exchange rate.",
+  "reading.store_sale": "The store calls it a sale, from {was}.",
+  "reading.under": "{price} is {diff} under its usual {usual}.",
+  "reading.under.lowest_30": "{price} is {diff} under its usual {usual}, and the lowest price in the last 30 days.",
+  "reading.under.lowest_since": "{price} is {diff} under its usual {usual}, and the lowest since {date}.",
+  "reading.usual": "At its usual price of {usual}."
+}

@@ -85,7 +85,7 @@ func MarketsFor(meta Meta, markets []market.Market) (read, check []market.Market
 	for _, m := range markets {
 		switch {
 		case !slices.Contains(meta.ShipsTo, m.Country):
-			skipped = append(skipped, fmt.Sprintf("%s: does not ship to %s", m.Code, m.Country))
+			skipped = append(skipped, fmt.Sprintf("%s: does not ship to %s", m.Key, m.Country))
 		case meta.Currency != m.Currency:
 			check = append(check, m)
 		default:

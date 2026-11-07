@@ -73,7 +73,7 @@ func (s *Service) Shopify(ctx context.Context, roasterSlug string, m market.Mark
 				coffeeIDs[o.Handle] = coffeeID
 			}
 			offerID, err := q.UpsertOffer(ctx, db.UpsertOfferParams{
-				CoffeeID: coffeeID, Market: m.Code, WeightGrams: int32(o.WeightGrams),
+				CoffeeID: coffeeID, Market: m.Key, WeightGrams: int32(o.WeightGrams),
 				SizeLabel: o.SizeLabel, Currency: m.Currency, VariantID: o.VariantID,
 			})
 			if err != nil {

@@ -28,14 +28,14 @@ func (s *Server) categoriesPage(w http.ResponseWriter, r *http.Request) {
 	var groups []views.CategoryGroup
 	for _, k := range kinds {
 		base := "/" + m.Code + "/" + k.listPath
-		total, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name})
+		total, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Key, Kind: k.name})
 		if err != nil {
 			s.fail(w, r, err)
 			return
 		}
 		g := views.CategoryGroup{Name: k.nav, URL: base, Icon: k.icon, Count: views.Amount(total, k.name+" in stock", k.name+"s in stock")}
 		for _, c := range k.categories {
-			n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Code, Kind: k.name, Title: c.include, TitleNot: c.exclude})
+			n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Key, Kind: k.name, Title: c.include, TitleNot: c.exclude})
 			if err != nil {
 				s.fail(w, r, err)
 				return
@@ -52,7 +52,7 @@ func (s *Server) categoriesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	paths := map[string]string{}
 	for _, other := range market.All {
-		paths[other.Code] = "/" + other.Code + "/categories/"
+		paths[other.Key] = "/" + other.Code + "/categories/"
 	}
 	p = s.inMarkets(p, m, coffeeKind, paths, "")
 	p = chrome(r, p, "/"+m.Code+"/")
@@ -276,12 +276,12 @@ func (s *Server) blackFriday(w http.ResponseWriter, r *http.Request) {
 	for _, m := range market.All {
 		row := views.MarketCount{Market: m.Name, URL: "/" + m.Code + "/"}
 		for _, k := range kinds {
-			drops, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: "drops"})
+			drops, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Key, Kind: k.name, Show: "drops"})
 			if err != nil {
 				s.fail(w, r, err)
 				return
 			}
-			sales, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: "sales"})
+			sales, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Key, Kind: k.name, Show: "sales"})
 			if err != nil {
 				s.fail(w, r, err)
 				return

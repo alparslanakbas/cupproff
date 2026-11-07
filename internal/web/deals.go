@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -13,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
+	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
 	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
@@ -192,7 +192,7 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 	cat, _ := k.category(st.cat)
 	// The stores of this section with stock here: the store control's
 	// options, and the check that ?roaster= names one of them.
-	brands, err := s.Q.ListBrands(ctx, m.Code)
+	brands, err := s.Q.ListBrands(ctx, m.Key)
 	if err != nil {
 		return st, false, err
 	}
@@ -213,7 +213,7 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 		}
 		storeID, roasterName = stores[i].ID, stores[i].Name
 	}
-	count := db.CountCoffeesParams{Market: m.Code, Kind: k.name, Show: st.show, Roaster: storeID,
+	count := db.CountCoffeesParams{Market: m.Key, Kind: k.name, Show: st.show, Roaster: storeID,
 		Title: cat.include, TitleNot: cat.exclude, Search: searchPattern(st.q)}
 	if st.total, err = s.Q.CountCoffees(ctx, count); err != nil {
 		return st, false, err
@@ -223,7 +223,7 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 		return st, false, nil
 	}
 	rows, err := s.Q.ListCoffees(ctx, db.ListCoffeesParams{
-		Market: m.Code, Kind: k.name, Show: st.show, PageSize: int32(size), Skip: int32((st.page - 1) * size),
+		Market: m.Key, Kind: k.name, Show: st.show, PageSize: int32(size), Skip: int32((st.page - 1) * size),
 		Roaster: storeID, Title: cat.include, TitleNot: cat.exclude, Search: count.Search, Sort: st.sort,
 	})
 	if err != nil {
@@ -364,8 +364,9 @@ func strip(m market.Market, current kind, cat string) []views.StripItem {
 // tried before the store sales (the home page's tea, on a day without a real
 // coffee drop).
 func (s *Server) hero(ctx context.Context, m market.Market, k kind, fallback *kind) (views.Hero, error) {
+	lang := m.Language()
 	var h views.Hero
-	total, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Code, Kind: k.name})
+	total, err := s.Q.CountCoffees(ctx, db.CountCoffeesParams{Market: m.Key, Kind: k.name})
 	if err != nil {
 		return h, err
 	}
@@ -382,7 +383,7 @@ func (s *Server) hero(ctx context.Context, m market.Market, k kind, fallback *ki
 		}
 	}
 	if !last.IsZero() {
-		h.LastCheck = last.UTC().Format("Jan 2, 15:04") + " UTC"
+		h.LastCheck = i18n.DayTime(lang, last) + " UTC"
 	}
 	tries := []struct {
 		k    kind
@@ -399,7 +400,7 @@ func (s *Server) hero(ctx context.Context, m market.Market, k kind, fallback *ki
 		show string
 	}{k, "sales"})
 	for _, t := range tries {
-		rows, err := s.Q.ListCoffees(ctx, db.ListCoffeesParams{Market: m.Code, Kind: t.k.name, Show: t.show, PageSize: 1})
+		rows, err := s.Q.ListCoffees(ctx, db.ListCoffeesParams{Market: m.Key, Kind: t.k.name, Show: t.show, PageSize: 1})
 		if err != nil {
 			return h, err
 		}
@@ -507,16 +508,16 @@ func pickLinks(ctx context.Context, ref string) (watch, compare string) {
 }
 
 // checked says when a store's prices were last read, as a row shows it.
-func checked(t time.Time, now time.Time) string {
+func checked(lang string, t time.Time, now time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
 	t, now = t.UTC(), now.UTC()
 	switch {
 	case t.Year() == now.Year() && t.YearDay() == now.YearDay():
-		return fmt.Sprintf("Checked today, %s UTC", t.Format("15:04"))
+		return i18n.T(lang, "checked.today", "time", t.Format("15:04"))
 	case t.Year() == now.Year() && t.YearDay() == now.YearDay()-1:
-		return fmt.Sprintf("Checked yesterday, %s UTC", t.Format("15:04"))
+		return i18n.T(lang, "checked.yesterday", "time", t.Format("15:04"))
 	}
-	return "Checked " + t.Format("Jan 2")
+	return i18n.T(lang, "checked.on", "date", i18n.Day(lang, t))
 }

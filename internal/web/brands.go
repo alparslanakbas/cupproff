@@ -25,7 +25,7 @@ func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	rows, err := s.Q.ListBrands(r.Context(), m.Code)
+	rows, err := s.Q.ListBrands(r.Context(), m.Key)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -48,7 +48,7 @@ func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	paths := map[string]string{}
 	for _, other := range market.All {
-		paths[other.Code] = "/" + other.Code + "/brands/"
+		paths[other.Key] = "/" + other.Code + "/brands/"
 	}
 	p = s.inMarkets(p, m, coffeeKind, paths, "")
 	p = chrome(r, p, "/"+m.Code+"/")
@@ -57,6 +57,7 @@ func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 	m, ok := market.ByCode(r.PathValue("market"))
+	lang := m.Language()
 	if !ok {
 		s.notFound(w, r)
 		return
@@ -71,7 +72,7 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k := kindOf(store.Kind)
-	brands, err := s.Q.ListBrands(r.Context(), m.Code)
+	brands, err := s.Q.ListBrands(r.Context(), m.Key)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -109,7 +110,7 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 	}
 	// Like a listing: page 1 has a sibling in every market where the store
 	// has stock today; later pages and filtered views name only themselves.
-	paths := map[string]string{m.Code: st.pageURL(st.page)}
+	paths := map[string]string{m.Key: st.pageURL(st.page)}
 	if st.page == 1 && !st.filtered() {
 		markets, err := s.Q.BrandMarkets(r.Context(), store.ID)
 		if err != nil {
@@ -130,20 +131,20 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 		Name: store.Name, Monogram: monogram(store.Name), Tone: tone(store.Slug),
 		Market: m.Short, Kind: k.name, Noun: k.name + "s", StoreURL: store.BaseUrl,
 		Coffees: me.Coffees, Drops: me.Drops, Sales: me.Sales,
-		BestLabel: unit, Best: k.perUnit(me.BestPrice, me.BestGrams, m.Currency),
+		BestLabel: unit, Best: k.perUnit(lang, me.BestPrice, me.BestGrams, m.Currency),
 		Deals: st.deals, Labels: k.labels, Others: others,
 		BrandsURL: "/" + m.Code + "/brands/",
 	}
 	if c := countryName(store.Country); c != "" {
 		v.About = append(v.About, views.Fact{Label: "Based in", Value: c})
 	}
-	v.About = append(v.About, views.Fact{Label: "Prices here", Value: "In " + currencyName(m.Currency) + ", as the store shows them to buyers in the " + m.Short})
+	v.About = append(v.About, views.Fact{Label: "Prices here", Value: "In " + currencyName(lang, m.Currency) + ", as the store shows them to buyers in the " + m.Short})
 	// A store selling in another currency than its own: say so, because its
 	// drops here count only when its own price drops too (see own_price).
 	if own := orEmpty(store.Currency); own != "" && own != m.Currency {
-		v.About = append(v.About, views.Fact{Label: "Its own currency", Value: currencyName(own)})
+		v.About = append(v.About, views.Fact{Label: "Its own currency", Value: currencyName(lang, own)})
 		v.RateNote = fmt.Sprintf("%s sets its prices in %s; the %s shows here are converted. A lower price here counts as a real drop only when its price in %s dropped too.",
-			store.Name, currencyName(own), currencyName(m.Currency), currencyName(own))
+			store.Name, currencyName(lang, own), currencyName(lang, m.Currency), currencyName(lang, own))
 	}
 	if n := len(store.ShipsTo); n > 0 {
 		v.About = append(v.About, views.Fact{Label: "Ships to", Value: views.Amount(int64(n), "country", "countries")})

@@ -39,11 +39,11 @@ func TestSparklineIsAStepLine(t *testing.T) {
 // same 12 px text as a desktop.
 func TestHistoryChartKeepsLabelsOutOfThePlot(t *testing.T) {
 	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	if got := historyChart([]pricePoint{{day, 2000}}, day.Add(24*time.Hour), 0, "USD", "x", "1"); got != "" {
+	if got := historyChart("en", []pricePoint{{day, 2000}}, day.Add(24*time.Hour), 0, "USD", "x", "1"); got != "" {
 		t.Fatalf("one point drew %q", got)
 	}
 	pts := []pricePoint{{day, 2000}, {day.Add(48 * time.Hour), 1800}}
-	svg := historyChart(pts, day.Add(96*time.Hour), 2000, "USD", "1 kg price", "size-1")
+	svg := historyChart("en", pts, day.Add(96*time.Hour), 2000, "USD", "1 kg price", "size-1")
 	plot := svg[strings.Index(svg, `<svg class="plot"`):strings.Index(svg, `</svg>`)]
 	if !strings.Contains(plot, `preserveAspectRatio="none"`) {
 		t.Errorf("plot doesn't stretch: %s", plot)
@@ -66,7 +66,7 @@ func TestHistoryChartKeepsLabelsOutOfThePlot(t *testing.T) {
 func TestHistoryChartReadings(t *testing.T) {
 	day := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	pts := []pricePoint{{day, 2000}, {day.Add(24 * time.Hour), 2000}, {day.Add(72 * time.Hour), 1800}}
-	svg := historyChart(pts, day.Add(96*time.Hour), 0, "USD", "x", "size-1")
+	svg := historyChart("en", pts, day.Add(96*time.Hour), 0, "USD", "x", "size-1")
 	if got := strings.Count(svg, `<g class="hit">`); got != 3 {
 		t.Fatalf("%d strips for 3 readings: %s", got, svg)
 	}
@@ -83,7 +83,7 @@ func TestHistoryChartReadings(t *testing.T) {
 			t.Errorf("chart lacks %s: %s", want, svg)
 		}
 	}
-	twice := historyChart([]pricePoint{{day, 2000}, {day.Add(12 * time.Hour), 1900}}, day.Add(24*time.Hour), 0, "USD", "x", "size-1")
+	twice := historyChart("en", []pricePoint{{day, 2000}, {day.Add(12 * time.Hour), 1900}}, day.Add(24*time.Hour), 0, "USD", "x", "size-1")
 	for _, want := range []string{`>Oct 1, 09:00 UTC</text>`, `>Oct 1, 21:00 UTC</text>`} {
 		if !strings.Contains(twice, want) {
 			t.Errorf("two readings on one day lack the time %s: %s", want, twice)
@@ -92,19 +92,19 @@ func TestHistoryChartReadings(t *testing.T) {
 }
 
 func TestMoneyAndPerKilo(t *testing.T) {
-	if got := money(1925, "USD"); got != "$19.25" {
+	if got := money("en", 1925, "USD"); got != "$19.25" {
 		t.Errorf("money = %q", got)
 	}
-	if got := perKilo(2000, 340, "USD"); got != "$58.82/kg" {
+	if got := perKilo("en", 2000, 340, "USD"); got != "$58.82/kg" {
 		t.Errorf("perKilo = %q", got)
 	}
-	if got := perKilo(2000, 0, "USD"); got != "" {
+	if got := perKilo("en", 2000, 0, "USD"); got != "" {
 		t.Errorf("perKilo without a weight = %q, want empty (never assumed)", got)
 	}
-	if got := perHundredGrams(2800, 113, "USD"); got != "$24.78/100 g" {
+	if got := perHundredGrams("en", 2800, 113, "USD"); got != "$24.78/100 g" {
 		t.Errorf("perHundredGrams = %q", got)
 	}
-	if got := perHundredGrams(2800, 0, "USD"); got != "" {
+	if got := perHundredGrams("en", 2800, 0, "USD"); got != "" {
 		t.Errorf("perHundredGrams without a weight = %q, want empty", got)
 	}
 }

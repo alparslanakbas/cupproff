@@ -99,7 +99,7 @@ func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
 // pay. The section is left out when there are none.
 func (s *Server) historyGuide(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.Q.ListCoffees(r.Context(), db.ListCoffeesParams{
-		Market: market.US.Code, Kind: coffeeKind.name, PageSize: 2, Title: `ge(i)?sha`,
+		Market: market.US.Key, Kind: coffeeKind.name, PageSize: 2, Title: `ge(i)?sha`,
 	})
 	if err != nil {
 		s.fail(w, r, err)

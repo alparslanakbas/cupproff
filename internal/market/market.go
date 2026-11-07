@@ -6,9 +6,15 @@
 // shows to that country is the real price (measured 11 Oct 2026).
 package market
 
+import "strings"
+
 // Market is one locale section of the site.
 type Market struct {
-	Code     string // URL segment, e.g. "en-us"
+	// Key names the market in the data (offers.market, roaster_markets.market,
+	// …). It is the market's English URL segment, so the rows written before
+	// the site had other languages need no migration.
+	Key      string
+	Code     string // URL segment of this language version, e.g. "en-us"
 	Lang     string // BCP 47 tag for <html lang>
 	Country  string // ISO 3166-1 alpha-2, sent to Shopify as country=
 	Currency string // ISO 4217, sent to Shopify as currency=
@@ -26,21 +32,21 @@ type Market struct {
 }
 
 // US is the first market.
-var US = Market{Code: "en-us", Lang: "en-US", Country: "US", Currency: "USD", Name: "United States", Short: "US",
+var US = Market{Key: "en-us", Code: "en-us", Lang: "en-US", Country: "US", Currency: "USD", Name: "United States", Short: "US",
 	Hreflangs: []string{"en-US"}}
 
 // UK: a store is read for a market when it ships there and shows that
 // market's currency (its default one, or through Shopify Markets: see
 // shopify.MarketsFor and PresentedCurrency). Most US stores that ship to the
 // UK still show USD there and stay out.
-var UK = Market{Code: "en-gb", Lang: "en-GB", Country: "GB", Currency: "GBP", Name: "United Kingdom", Short: "UK",
+var UK = Market{Key: "en-gb", Code: "en-gb", Lang: "en-GB", Country: "GB", Currency: "GBP", Name: "United Kingdom", Short: "UK",
 	Hreflangs: []string{"en-GB"}}
 
 // EU is one market for the euro area, in English (design §3): stores are
 // asked for Germany's prices. Prices inside the EU differ by country with
 // VAT (Tim Wendelboe: 40.95 EUR to Germany, 42.95 EUR to Sweden), so the
 // pages say which country they show.
-var EU = Market{Code: "en-eu", Lang: "en", Country: "DE", Currency: "EUR", Name: "European Union", Short: "EU",
+var EU = Market{Key: "en-eu", Code: "en-eu", Lang: "en", Country: "DE", Currency: "EUR", Name: "European Union", Short: "EU",
 	Hreflangs: []string{"en-DE", "en-AT", "en-BE", "en-NL", "en-LU", "en-FR", "en-IE", "en-IT", "en-ES", "en-PT",
 		"en-FI", "en-EE", "en-LV", "en-LT", "en-SK", "en-SI", "en-GR", "en-CY", "en-MT", "en-HR", "en-BG"},
 	Note: "Prices are the ones each store shows a buyer in Germany; with VAT they can differ in other EU countries.",
@@ -53,6 +59,23 @@ var All = []Market{US, UK, EU}
 func ByCode(code string) (Market, bool) {
 	for _, m := range All {
 		if m.Code == code {
+			return m, true
+		}
+	}
+	return Market{}, false
+}
+
+// Language is the language the market's pages are written in, as the
+// catalog names it: "en" for "en-US".
+func (m Market) Language() string {
+	lang, _, _ := strings.Cut(m.Lang, "-")
+	return strings.ToLower(lang)
+}
+
+// ByKey finds a live market by its data key.
+func ByKey(key string) (Market, bool) {
+	for _, m := range All {
+		if m.Key == key {
 			return m, true
 		}
 	}

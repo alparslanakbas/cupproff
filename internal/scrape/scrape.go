@@ -129,11 +129,11 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 			// A refusal counts for the breaker; anything else only skips
 			// this market for today.
 			if errors.Is(err, shopify.ErrRateLimited) || errors.Is(err, shopify.ErrChallenged) {
-				return fmt.Errorf("%s currency check: %w", m.Code, err)
+				return fmt.Errorf("%s currency check: %w", m.Key, err)
 			}
-			skipped = append(skipped, fmt.Sprintf("%s: currency check failed: %v", m.Code, err))
+			skipped = append(skipped, fmt.Sprintf("%s: currency check failed: %v", m.Key, err))
 		case cur != m.Currency:
-			skipped = append(skipped, fmt.Sprintf("%s: shows %s to %s, market needs %s", m.Code, cur, m.Country, m.Currency))
+			skipped = append(skipped, fmt.Sprintf("%s: shows %s to %s, market needs %s", m.Key, cur, m.Country, m.Currency))
 		default:
 			read = append(read, m)
 		}
@@ -144,15 +144,15 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 	for _, m := range read {
 		products, err := client.FetchProducts(ctx, baseURL, m)
 		if errors.Is(err, shopify.ErrPageCap) {
-			r.Log.Warn("catalog cut at the page cap; raise MaxPages", "roaster", slug, "market", m.Code, "products", len(products))
+			r.Log.Warn("catalog cut at the page cap; raise MaxPages", "roaster", slug, "market", m.Key, "products", len(products))
 		} else if err != nil {
-			return fmt.Errorf("%s: %w", m.Code, err)
+			return fmt.Errorf("%s: %w", m.Key, err)
 		}
 		rep, err := r.Ingest.Shopify(ctx, slug, m, products, time.Now())
 		if err != nil {
-			return fmt.Errorf("%s: %w", m.Code, err)
+			return fmt.Errorf("%s: %w", m.Key, err)
 		}
-		r.Log.Info("roaster read", "roaster", slug, "market", m.Code,
+		r.Log.Info("roaster read", "roaster", slug, "market", m.Key,
 			"products", rep.Products, "offers", rep.Offers, "skipped", len(rep.Skipped))
 	}
 	// Read without an error, even when no market applied or no product had a
@@ -168,7 +168,7 @@ const currencyCheckDays = 7
 // last week's check if there is one, otherwise by reading its home page as a
 // buyer there (when robots.txt allows) and keeping the answer.
 func (r *Runner) presented(ctx context.Context, client *shopify.Client, slug, baseURL string, m market.Market, rules robots.All) (string, error) {
-	cur, err := r.Q.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Code, MaxAgeDays: currencyCheckDays})
+	cur, err := r.Q.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Key, MaxAgeDays: currencyCheckDays})
 	if err == nil {
 		return cur, nil
 	}
@@ -182,10 +182,10 @@ func (r *Runner) presented(ctx context.Context, client *shopify.Client, slug, ba
 	if err != nil {
 		return "", err
 	}
-	if err := r.Q.SavePresentedCurrency(ctx, db.SavePresentedCurrencyParams{Slug: slug, Market: m.Code, Currency: cur}); err != nil {
+	if err := r.Q.SavePresentedCurrency(ctx, db.SavePresentedCurrencyParams{Slug: slug, Market: m.Key, Currency: cur}); err != nil {
 		return "", err
 	}
-	r.Log.Info("currency checked", "roaster", slug, "market", m.Code, "presents", cur)
+	r.Log.Info("currency checked", "roaster", slug, "market", m.Key, "presents", cur)
 	return cur, nil
 }
 

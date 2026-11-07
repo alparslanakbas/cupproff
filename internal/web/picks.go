@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
+	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
 	"github.com/alparslanakbas/cupproof/internal/pricing"
 	"github.com/alparslanakbas/cupproof/internal/web/views"
@@ -129,7 +130,8 @@ func (s *Server) clearCompare(w http.ResponseWriter, r *http.Request) {
 // gone or no longer sold in that market.
 func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, error) {
 	parts := strings.Split(ref, "/")
-	m, ok := market.ByCode(parts[0])
+	m, ok := market.ByKey(parts[0])
+	lang := m.Language()
 	if !ok {
 		return views.Card{}, false, nil
 	}
@@ -144,7 +146,7 @@ func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, err
 	if err != nil {
 		return views.Card{}, false, err
 	}
-	rows, err := s.Q.OffersForCoffee(ctx, db.OffersForCoffeeParams{CoffeeID: c.ID, Market: m.Code})
+	rows, err := s.Q.OffersForCoffee(ctx, db.OffersForCoffeeParams{CoffeeID: c.ID, Market: m.Key})
 	if err != nil || len(rows) == 0 {
 		return views.Card{}, false, err
 	}
@@ -170,7 +172,7 @@ func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, err
 	now := time.Now()
 	card := views.Card{
 		URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
-		Size: o.SizeLabel, Price: money(o.PriceMinor, o.Currency), PerUnit: k.perUnit(o.PriceMinor, o.WeightGrams, o.Currency),
+		Size: o.SizeLabel, Price: money(lang, o.PriceMinor, o.Currency), PerUnit: k.perUnit(lang, o.PriceMinor, o.WeightGrams, o.Currency),
 		BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID),
 		StoreNote: k.labels.StoreNote, Ref: ref, Market: m.Short, OutOfStock: !o.Available,
 	}
@@ -183,31 +185,31 @@ func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, err
 	sum := pricing.Summary{Latest: o.PriceMinor, Low30: o.Low30, Usual: o.Usual,
 		TrackedSince: o.TrackedSince.Time, LowestTracked: o.LowestTracked, OwnPrice: o.OwnPrice}
 	if o.Usual > 0 {
-		card.Usual = money(o.Usual, o.Currency)
+		card.Usual = money(lang, o.Usual, o.Currency)
 	}
 	if o.Low30 > 0 {
-		card.Low30 = money(o.Low30, o.Currency)
+		card.Low30 = money(lang, o.Low30, o.Currency)
 	}
 	card.Lower = o.PriceMinor < o.Usual && !sum.RateOnly()
 	card.RealDrop = sum.DropPercent()
 	if card.Lower && card.RealDrop > 0 {
-		card.Saved = money(o.Usual-o.PriceMinor, o.Currency)
+		card.Saved = money(lang, o.Usual-o.PriceMinor, o.Currency)
 	}
 	if since, ok := sum.LowestSince(now); ok {
-		card.LowestSince = since.UTC().Format("Jan 2")
+		card.LowestSince = i18n.Day(lang, since)
 	} else {
 		card.LowestIn30 = sum.LowestIn30Days()
 	}
 	if o.CompareAtMinor != nil {
-		card.StoreWas = money(*o.CompareAtMinor, o.Currency)
+		card.StoreWas = money(lang, *o.CompareAtMinor, o.Currency)
 		if was := *o.CompareAtMinor; was > o.PriceMinor {
 			card.StorePercent = int((was - o.PriceMinor) * 100 / was)
 		}
 	}
 	if o.SeenAt.Valid {
-		card.Checked = checked(o.SeenAt.Time, now)
+		card.Checked = checked(lang, o.SeenAt.Time, now)
 	}
-	card.Reading = reading(sum, now, o.CompareAtMinor, o.Currency, orEmpty(c.StoreCurrency))
+	card.Reading = reading(lang, sum, now, o.CompareAtMinor, o.Currency, orEmpty(c.StoreCurrency))
 	return card, true, nil
 }
 
