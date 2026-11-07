@@ -1,0 +1,52 @@
+name: Deploy to Oracle VM
+
+on:
+  push:
+    branches: [main]
+
+# Two deploys must not run at once: a second push waits, and the running one is
+# not cancelled (a deploy cut halfway is worse than the finished older one).
+# The sister repositories learned this the hard way.
+concurrency:
+  group: deploy-cupproof
+  cancel-in-progress: false
+
+# The test job reads the repository, the deploy job only speaks SSH.
+permissions:
+  contents: read
+
+jobs:
+  # TEST GATE: the deploy starts only when vet and the tests pass. Until now a
+  # deploy was a manual run on the server, with whatever was pushed.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Commit SHAs, not tags, as in the sister repositories: a tag can later be
+      # moved to other code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  deploy:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        # This step sees the production SSH key: pinned to a commit SHA, the
+        # sister repositories' pin (`git ls-remote https://github.com/appleboy/ssh-action refs/tags/v1.0.3`).
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 20m
+          # The key can only run the deploy gate on the server
+          # (authorized_keys: restrict,command="/usr/local/bin/deploy-kapisi cupproof").
+          # The gate accepts "deploy" and "durum" and nothing else; "deploy"
+          # pulls this repository and runs scripts/deploy.sh, where the steps
+          # live. The gate's source is in the Turkish site's repository
+          # (scripts/deploy-kapisi.sh).
+          script: deploy
