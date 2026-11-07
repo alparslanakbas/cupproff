@@ -188,15 +188,24 @@ func (s *Server) inMarkets(p views.Page, current market.Market, k kind, paths ma
 	if xDefault != "" {
 		p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + xDefault})
 	}
-	if versions := current.Versions(); len(versions) > 1 {
-		own, ok := paths[current.Key]
+	// The page in every language the site has: in the market's own
+	// languages the same page; in another, the first market that has the
+	// language, at the same page when it exists there, else at its list.
+	p.Languages = nil
+	seen := map[string]bool{}
+	for _, m := range append([]market.Market{current}, market.All...) {
+		path, ok := paths[m.Key]
 		if !ok {
-			own = "/" + current.Key + "/" + k.listPath
+			path = "/" + m.Key + "/" + k.listPath
 		}
-		for _, v := range versions {
+		for _, v := range m.Versions() {
 			lang := v.Language()
+			if seen[lang] {
+				continue
+			}
+			seen[lang] = true
 			p.Languages = append(p.Languages, views.LangLink{Lang: lang, Name: i18n.T(lang, "lang.name"),
-				URL: v.Localize(own), Current: v.Code == current.Code})
+				URL: v.Localize(path), Current: v.Code == current.Code})
 		}
 	}
 	p.MarketBase = "/" + current.Code + "/"
@@ -901,4 +910,26 @@ func withLang(next http.Handler) http.Handler {
 // titles that name the market.
 func inMarket(lang string, m market.Market) string {
 	return i18n.T(lang, "market."+m.Region()+".in")
+}
+
+// siteLanguages is the language choice of a page outside the markets (the
+// home page, guides, tools, a 404): English is the page itself, another
+// language leads to the first market that has it.
+func siteLanguages(ctx context.Context, path string) []views.LangLink {
+	cur := i18n.Lang(ctx)
+	en := views.LangLink{Lang: i18n.Source, Name: i18n.T(i18n.Source, "lang.name"), URL: "/", Current: cur == i18n.Source}
+	if en.Current {
+		en.URL = localPath(path)
+	}
+	links, seen := []views.LangLink{en}, map[string]bool{i18n.Source: true}
+	for _, m := range market.All {
+		for _, v := range m.Versions() {
+			if lang := v.Language(); !seen[lang] {
+				seen[lang] = true
+				links = append(links, views.LangLink{Lang: lang, Name: i18n.T(lang, "lang.name"), URL: "/" + v.Code + "/",
+					Current: lang == cur})
+			}
+		}
+	}
+	return links
 }

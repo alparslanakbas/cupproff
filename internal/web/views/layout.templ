@@ -168,11 +168,7 @@ templ Layout(p Page, hero templ.Component) {
 						if len(p.Regions) > 0 {
 							<details class="region">
 								<summary>
-									if len(p.Languages) > 1 {
-										@flag(currentLang(p.Languages))
-									} else {
-										@icon("globe")
-									}
+									@icon("globe")
 									<span>{ currentRegion(ctx, p.Regions) }</span>
 									@icon("caret-down")
 								</summary>
@@ -184,20 +180,26 @@ templ Layout(p Page, hero templ.Component) {
 											<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
 										}
 									}
-									if len(p.Languages) > 1 {
-										<span class="menu-sep" role="separator" aria-label={ tr(ctx, "nav.language") }></span>
-										for _, l := range p.Languages {
-											if l.Current {
-												<a class="lang-link" href={ templ.SafeURL(l.URL) } hreflang={ l.Lang } lang={ l.Lang } aria-current="page">
-													@flag(l.Lang)
-													<span>{ l.Name }</span>
-												</a>
-											} else {
-												<a class="lang-link" href={ templ.SafeURL(l.URL) } hreflang={ l.Lang } lang={ l.Lang }>
-													@flag(l.Lang)
-													<span>{ l.Name }</span>
-												</a>
-											}
+								</nav>
+							</details>
+						}
+						if len(p.Languages) > 1 {
+							<details class="region lang">
+								<summary aria-label={ tr(ctx, "nav.language") + ": " + currentName(p.Languages) }>
+									@flag(currentLang(p.Languages))
+								</summary>
+								<nav class="region-menu" aria-label={ tr(ctx, "nav.language") }>
+									for _, l := range p.Languages {
+										if l.Current {
+											<a class="lang-link" href={ templ.SafeURL(l.URL) } hreflang={ l.Lang } lang={ l.Lang } aria-current="page">
+												@flag(l.Lang)
+												<span>{ l.Name }</span>
+											</a>
+										} else {
+											<a class="lang-link" href={ templ.SafeURL(l.URL) } hreflang={ l.Lang } lang={ l.Lang }>
+												@flag(l.Lang)
+												<span>{ l.Name }</span>
+											</a>
 										}
 									}
 								</nav>

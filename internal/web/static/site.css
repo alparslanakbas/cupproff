@@ -205,7 +205,6 @@ main.wrap > :first-child { margin-top: 0; }
 /* language: flag and the language's own name */
 .flag { flex: none; width: 20px; height: 15px; border-radius: 2px; box-shadow: 0 0 0 1px var(--line-strong); }
 .lang-link { display: flex; align-items: center; gap: 8px; }
-.menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
 
 /* ---- shared bits -------------------------------------------------------- */
 .btn {
@@ -555,6 +554,18 @@ option { background: var(--surface); color: var(--text); }
 .theme a[aria-current="true"] { background: #fff; color: var(--button); }
 .theme .ic { width: 15px; height: 15px; }
 .theme .theme-system { display: none; }
+/* the language button is a flag (its name is the button's label). Below
+   1280 px the search has a row of its own and the top row is full (at
+   1024 px the menu, watchlist and theme fill it), so the flag sits beside
+   the search; from 1280 px the search shares the top row and makes room. */
+.topbar .lang summary { padding: 0 11px; }
+@media (max-width: 1279px) {
+  .topbar .lang { order: 3; }
+  .topbar-row:has(> .lang) .search { width: calc(100% - 54px); }
+}
+@media (min-width: 641px) and (max-width: 1279px) {
+  .topbar-row:has(> .lang) .search { width: calc(100% - 60px); }
+}
 @media (min-width: 641px) {
   .topbar-row { gap: 14px 16px; }
   .watch-btn { display: inline-flex; }

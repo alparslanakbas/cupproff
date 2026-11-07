@@ -498,6 +498,9 @@ func chrome(r *http.Request, p views.Page, searchIn string) views.Page {
 	if p.Search == "" {
 		p.Search = searchIn
 	}
+	if len(p.Languages) == 0 {
+		p.Languages = siteLanguages(r.Context(), path)
+	}
 	return p
 }
 

@@ -1,10 +1,12 @@
 package web
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
+	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
 
 // The catalog has every text the code names by building its id, which the
@@ -66,5 +68,34 @@ func TestMarketVersions(t *testing.T) {
 	}
 	if _, ok := market.ByCode("de-us"); ok {
 		t.Error("de-us answers, but the US market has no German pages")
+	}
+}
+
+// Every page offers every language the site has: the market's own languages
+// lead to the same page, another to the first market that has it, at the
+// same page when the page exists there, else at that market's list.
+func TestLanguageLinks(t *testing.T) {
+	s := &Server{SiteURL: "https://example.org"}
+	links := func(cur market.Market, paths map[string]string) string {
+		var out []string
+		for _, l := range s.inMarkets(views.Page{}, cur, coffeeKind, paths, "").Languages {
+			mark := ""
+			if l.Current {
+				mark = "*"
+			}
+			out = append(out, l.Lang+mark+" "+l.URL)
+		}
+		return strings.Join(out, ", ")
+	}
+	de, _ := market.ByCode("de-eu")
+	for _, c := range []struct{ name, got, want string }{
+		{"US page not sold in the EU", links(market.US, map[string]string{"en-us": "/en-us/coffee/x"}), "en* /en-us/coffee/x, de /de-eu/"},
+		{"US page also in the EU", links(market.US, map[string]string{"en-us": "/en-us/coffee/x", "en-eu": "/en-eu/coffee/x"}),
+			"en* /en-us/coffee/x, de /de-eu/coffee/x"},
+		{"German page", links(de, map[string]string{"en-eu": "/de-eu/coffee/x"}), "en /en-eu/coffee/x, de* /de-eu/coffee/x"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s: %s\n want %s", c.name, c.got, c.want)
+		}
 	}
 }

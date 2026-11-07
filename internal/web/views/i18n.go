@@ -118,9 +118,14 @@ func currentLang(langs []LangLink) string {
 	return ""
 }
 
-// currentCode is the chosen language as the selector's button shows it: "DE".
-func currentCode(langs []LangLink) string {
-	return strings.ToUpper(currentLang(langs))
+// currentName is the chosen language's own name: "Deutsch".
+func currentName(langs []LangLink) string {
+	for _, l := range langs {
+		if l.Current {
+			return l.Name
+		}
+	}
+	return ""
 }
 
 // flag is a language's flag, drawn plain: at 20 px a coat of arms would be a
