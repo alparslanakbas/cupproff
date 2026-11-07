@@ -49,11 +49,17 @@ func (s *Server) Handler() http.Handler {
 		sum := sha256.Sum256(css)
 		views.StylesheetURL = "/static/site.css?v=" + hex.EncodeToString(sum[:4])
 	}
+	if js, err := fs.ReadFile(static, "site.js"); err == nil {
+		sum := sha256.Sum256(js)
+		views.ScriptURL = "/static/site.js?v=" + hex.EncodeToString(sum[:4])
+	}
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /robots.txt", s.robots)
 	mux.HandleFunc("GET /sitemap.xml", s.sitemap)
+	mux.HandleFunc("GET /sw.js", serviceWorker(buildVersion()))
 	mux.Handle("GET /static/{file}", http.StripPrefix("/static/", cacheFor(24*time.Hour, files)))
 	// ServeMux would add the trailing slash with a 307 (temporary) redirect
 	// (Go 1.26+). Canonical moves must be permanent, so it is done here.
@@ -408,7 +414,7 @@ func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.L
 			Size:       c.SizeLabel, Price: money(lang, c.PriceMinor, c.Currency),
 			PerUnit:   k.perUnit(lang, c.PriceMinor, c.WeightGrams, c.Currency),
 			BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
-			Chart:     sparkArea(history[c.OfferID], now, 180, 48, c.Title+" price history"),
+			Chart:     sparkArea(history[c.OfferID], now, 180, 48, i18n.T(lang, "chart.label", "title", c.Title)),
 			StoreNote: k.text(lang, "store_note"),
 			Ref:       m.Key + "/" + k.segment + "/" + c.Slug,
 		}
@@ -663,7 +669,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 			ov.Since = i18n.Date(lang, pts[0].At)
 			// Wide and flat, like a roast curve: the page's CSS scales it to
 			// the column, the viewBox keeps the proportions.
-			ov.Chart = sparkline(pts, now, 640, 96, fmt.Sprintf("%s price since %s", o.SizeLabel, ov.Since))
+			ov.Chart = sparkline(pts, now, 640, 96, i18n.T(lang, "chart.since", "size", o.SizeLabel, "date", ov.Since))
 			hi, lo := pts[0].Minor, pts[0].Minor
 			for _, p := range pts {
 				hi, lo = max(hi, p.Minor), min(lo, p.Minor)

@@ -59,32 +59,26 @@ func TestHistoryChartKeepsLabelsOutOfThePlot(t *testing.T) {
 	}
 }
 
-// Hovering the chart reads a reading without a script (6 Nov, reported
-// missing): one strip per reading, the first from the left edge and the last
-// to the right edge, each tag with the reading's date and price. Near the left
-// edge the tag leans right; near the top it hangs below the point.
+// The chart hands its readings to the script as [x %, y %, date, price], x
+// running from the first reading to today, and two readings on one day carry
+// their time. The guide, the dot and the tag the script moves are in place.
 func TestHistoryChartReadings(t *testing.T) {
 	day := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	pts := []pricePoint{{day, 2000}, {day.Add(24 * time.Hour), 2000}, {day.Add(72 * time.Hour), 1800}}
 	svg := historyChart("en", pts, day.Add(96*time.Hour), 0, "USD", "x", "size-1")
-	if got := strings.Count(svg, `<g class="hit">`); got != 3 {
-		t.Fatalf("%d strips for 3 readings: %s", got, svg)
-	}
 	for _, want := range []string{
-		`<rect class="zone" x="0.00%" y="0" width="12.50%"`,  // halfway to the second reading at 25 %
-		`<rect class="zone" x="50.00%" y="0" width="50.00%"`, // the last reading answers up to today
-		`>Oct 1, 2026</text>`,
-		`text-anchor="start">$20.00</text>`, // at the left edge
-		`>Oct 4, 2026</text>`,
-		`text-anchor="middle">$18.00</text>`,
-		`<rect x="-10" y="12" width="116"`, // $20.00 is near the top: the tag hangs below
+		`data-points="[[0,`,
+		`,&quot;Oct 1, 2026&quot;,&quot;$20.00&quot;],[25,`, // the second reading, 24 of 96 hours in
+		`],[75,`, // the third, 72 of 96 hours in
+		`,&quot;Oct 4, 2026&quot;,&quot;$18.00&quot;]]"`,
+		`<line class="cursor"`, `<circle class="cursor-dot"`, `<div class="chart-tip" hidden>`,
 	} {
 		if !strings.Contains(svg, want) {
 			t.Errorf("chart lacks %s: %s", want, svg)
 		}
 	}
 	twice := historyChart("en", []pricePoint{{day, 2000}, {day.Add(12 * time.Hour), 1900}}, day.Add(24*time.Hour), 0, "USD", "x", "size-1")
-	for _, want := range []string{`>Oct 1, 09:00 UTC</text>`, `>Oct 1, 21:00 UTC</text>`} {
+	for _, want := range []string{`&quot;Oct 1, 09:00 UTC&quot;`, `&quot;Oct 1, 21:00 UTC&quot;`} {
 		if !strings.Contains(twice, want) {
 			t.Errorf("two readings on one day lack the time %s: %s", want, twice)
 		}

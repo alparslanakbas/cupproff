@@ -276,7 +276,8 @@ main.wrap > :first-child { margin-top: 0; }
    green. The height is set here and the plot stretches to it; the labels
    are drawn in the margin outside the box (overflow: visible), so the box
    leaves room. */
-.chart { display: block; overflow: visible; width: calc(100% - 64px); height: 220px; margin: 8px 0 28px 64px; }
+.chart-box { position: relative; height: 220px; margin: 8px 0 28px 64px; }
+.chart { display: block; overflow: visible; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 .chart .axis { fill: var(--faint); font: 11px var(--sans); }
 .chart .line { stroke-width: 2; }
 
@@ -285,16 +286,20 @@ main.wrap > :first-child { margin-top: 0; }
 /* Reading the chart: each reading owns the strip nearest to it; hovering or
    tapping it shows a guide, a dot and the reading's date and price, like the
    sister sites' charts (historyChart in chart.go). CSS only, no script. */
-.chart .zone { fill: transparent; }
-.chart .tip { opacity: 0; pointer-events: none; }
-.chart .hit:hover .tip { opacity: 1; }
-.chart .tip line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
-.chart .tip circle { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
-.chart .tip rect { fill: var(--surface); stroke: var(--line); }
-.chart .tip text { fill: var(--muted); font: 10px var(--sans); }
-.chart .tip .v { fill: var(--head); font: 600 12px var(--sans); }
-.sheet-chart .chart { cursor: crosshair; }
-@media (hover: none) { .chart .zone { cursor: pointer; } }
+/* the readout (static/site.js), as on the sister site: a dashed guide, a dot
+   and a tag with the date and price of the reading nearest the pointer */
+.chart .cursor { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; visibility: hidden; }
+.chart .cursor-dot { fill: var(--accent); visibility: hidden; }
+.chart-box.reading .cursor, .chart-box.reading .cursor-dot { visibility: visible; }
+.chart-tip {
+  position: absolute; z-index: 2; pointer-events: none; white-space: nowrap; padding: 4px 8px; border-radius: 8px;
+  background: var(--surface); box-shadow: var(--shadow-md); text-align: center; transform: translate(-50%, calc(-100% - 8px));
+}
+.chart-tip[data-align="left"] { transform: translate(0, calc(-100% - 8px)); }
+.chart-tip[data-align="right"] { transform: translate(-100%, calc(-100% - 8px)); }
+.chart-tip[hidden] { display: none; }
+.chart-tip-date { font-size: 10px; color: var(--faint); }
+.chart-tip-price { font-size: 12px; font-weight: 500; color: var(--head); }
 .spark path { stroke-width: 2; }
 
 .pager { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 24px; }
@@ -323,7 +328,7 @@ main.wrap > :first-child { margin-top: 0; }
 
 @media (max-width: 640px) {
   .wrap { width: calc(100% - 32px); }
-  .chart { width: calc(100% - 56px); height: 170px; margin-left: 56px; }
+  .chart-box { height: 170px; margin-left: 56px; }
   .section { margin-top: 44px; }
 }
 
@@ -1051,4 +1056,30 @@ fieldset.field { display: block; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
   .btn-primary:hover, .brand-card:hover, .guide-card:hover, .tile-card:hover, .tile-card:hover .tile-go { transform: none; }
+}
+
+/* ---- the "new version" bar and the install card (static/site.js) ------------ */
+/* after the sister site: a strip over the page, and a card under the list */
+.update-bar { background: var(--button); color: #fff; }
+.update-bar[hidden], .install-card[hidden] { display: none; }
+.update-row { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px 0; text-align: center; }
+.update-row p { margin: 0; font-size: 12px; font-weight: 500; }
+.update-row div { display: flex; flex: none; align-items: center; gap: 8px; }
+.update-row button { border: 0; border-radius: 8px; font: inherit; font-size: 12px; cursor: pointer; }
+.update-row [data-reload] { padding: 4px 12px; background: #fff; color: var(--button); font-weight: 600; }
+.update-row [data-reload]:hover { opacity: .9; }
+.update-row [data-close] { padding: 4px 8px; background: transparent; color: rgba(255, 255, 255, .8); }
+.update-row [data-close]:hover { color: #fff; }
+.install-card { display: flex; align-items: center; gap: 16px; margin-top: 56px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.install-card p { flex: 1; margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.install-card .btn { flex: none; min-height: 40px; }
+.install-icon { display: none; flex: none; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.install-icon .ic { width: 24px; height: 24px; }
+.install-close { display: grid; flex: none; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--faint); cursor: pointer; }
+.install-close:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.install-close .ic { width: 16px; height: 16px; }
+@media (min-width: 641px) {
+  .update-row { flex-direction: row; justify-content: space-between; text-align: left; }
+  .update-row p { font-size: 13px; }
+  .install-icon { display: grid; }
 }

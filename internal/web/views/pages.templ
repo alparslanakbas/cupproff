@@ -517,6 +517,7 @@ templ pagerNav(p Pager) {
 templ Home(p Page, l Listing) {
 	@Layout(p, heroBand(l.Hero)) {
 		@dealsSection(l.Deals)
+		@installCard()
 		@guidesTeaser()
 		@faq()
 	}
@@ -526,7 +527,24 @@ templ Home(p Page, l Listing) {
 templ MarketHome(p Page, l Listing) {
 	@Layout(p, heroBand(l.Hero)) {
 		@dealsSection(l.Deals)
+		@installCard()
 	}
+}
+
+// installCard is the sister site's "install as an app" card, under the list
+// as there. It stays hidden until the browser offers the install, which it
+// never does once the app is installed (static/site.js).
+templ installCard() {
+	<section class="install-card" id="install-card" hidden>
+		<span class="install-icon">
+			@icon("phone")
+		</span>
+		<p>{ tr(ctx, "pwa.install_text") }</p>
+		<button type="button" class="btn btn-primary" data-install>{ tr(ctx, "pwa.install") }</button>
+		<button type="button" class="install-close" data-close title={ tr(ctx, "pwa.close") } aria-label={ tr(ctx, "pwa.close") }>
+			@icon("x")
+		</button>
+	</section>
 }
 
 // faq is the home page's questions, from the rules the site runs on.
