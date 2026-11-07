@@ -48,14 +48,6 @@ type Brand struct {
 	Others    []BrandCard
 }
 
-// storeWord is what a store of this kind is called on its page.
-func storeWord(kind string) string {
-	if kind == "tea" {
-		return "tea house"
-	}
-	return "roaster"
-}
-
 templ monoBadge(text string, tone int, big bool) {
 	<span class={ "mono", fmt.Sprintf("tone-%d", tone), templ.KV("mono-lg", big) } aria-hidden="true">{ text }</span>
 }
@@ -69,15 +61,15 @@ templ brandCardView(c BrandCard) {
 		<h3>{ c.Name }</h3>
 		<span class="brand-meta">{ c.Count }</span>
 		if c.Country != "" {
-			<span class="brand-meta">{ "Based in " + c.Country }</span>
+			<span class="brand-meta">{ tr(ctx, "brand.based_in_value", "country", c.Country) }</span>
 		}
 		<span class="badges">
 			if c.Drops > 0 {
-				<span class="badge badge-green">{ Amount(c.Drops, "real drop", "real drops") }</span>
+				<span class="badge badge-green">{ trn(ctx, "count.real_drops", c.Drops) }</span>
 			} else if c.Sales > 0 {
-				<span class="badge badge-amber">{ Amount(c.Sales, "store sale", "store sales") }</span>
+				<span class="badge badge-amber">{ trn(ctx, "count.store_sales", c.Sales) }</span>
 			} else {
-				<span class="badge">No badge today</span>
+				<span class="badge">{ tr(ctx, "brands.no_badge") }</span>
 			}
 		</span>
 	</a>
@@ -87,13 +79,13 @@ templ brandsHero(b Brands) {
 	<section class="wrap">
 		<div class="page-hero">
 			<div>
-				<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><span>Brands</span></nav>
-				<h1>Roasters and tea houses</h1>
-				<p class="lede">{ "The stores we read for the " + b.Market + ": what each one has in stock today, and how many of those prices are real drops." }</p>
+				<nav class="crumbs" aria-label={ tr(ctx, "nav.breadcrumb") }><a href="/">{ tr(ctx, "nav.home") }</a><span>/</span><span>{ tr(ctx, "nav.brands") }</span></nav>
+				<h1>{ tr(ctx, "nav.stores") }</h1>
+				<p class="lede">{ tr(ctx, "brands.lede", "market", b.Market) }</p>
 			</div>
-			<nav class="toggle" aria-label="Jump to">
-				<a href="#roasters">Coffee roasters</a>
-				<a href="#tea-houses">Tea houses</a>
+			<nav class="toggle" aria-label={ tr(ctx, "brands.jump") }>
+				<a href="#roasters">{ tr(ctx, "brands.roasters") }</a>
+				<a href="#tea-houses">{ tr(ctx, "brands.tea_houses") }</a>
 			</nav>
 		</div>
 	</section>
@@ -101,11 +93,11 @@ templ brandsHero(b Brands) {
 
 templ BrandsIndex(p Page, b Brands) {
 	@Layout(p, brandsHero(b)) {
-		<p class="legend"><span><span class="dot dot-green"></span>Most real drops first</span><span>Counts come from today's list and change with each price check.</span></p>
+		<p class="legend"><span><span class="dot dot-green"></span>{ tr(ctx, "brands.legend_order") }</span><span>{ tr(ctx, "brands.legend_counts") }</span></p>
 		<section class="brand-section" id="roasters">
-			<h2>{ fmt.Sprintf("Coffee roasters (%d)", len(b.Roasters)) }</h2>
+			<h2>{ tr(ctx, "brands.roasters_n", "n", fmt.Sprint(len(b.Roasters))) }</h2>
 			if len(b.Roasters) == 0 {
-				<div class="empty">No roaster has coffee in stock here today.</div>
+				<div class="empty">{ tr(ctx, "brands.no_roaster") }</div>
 			} else {
 				<div class="brand-grid">
 					for _, c := range b.Roasters {
@@ -115,9 +107,9 @@ templ BrandsIndex(p Page, b Brands) {
 			}
 		</section>
 		<section class="brand-section" id="tea-houses">
-			<h2>{ fmt.Sprintf("Tea houses (%d)", len(b.TeaHouses)) }</h2>
+			<h2>{ tr(ctx, "brands.tea_houses_n", "n", fmt.Sprint(len(b.TeaHouses))) }</h2>
 			if len(b.TeaHouses) == 0 {
-				<div class="empty">No tea house has tea in stock here today.</div>
+				<div class="empty">{ tr(ctx, "brands.no_tea_house") }</div>
 			} else {
 				<div class="brand-grid">
 					for _, c := range b.TeaHouses {
@@ -133,22 +125,22 @@ templ brandHero(b Brand) {
 	<section class="wrap">
 		<div class="brand-hero">
 			<div class="brand-hero-main">
-				<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href={ templ.SafeURL(b.BrandsURL) }>Brands</a><span>/</span><span>{ b.Name }</span></nav>
+				<nav class="crumbs" aria-label={ tr(ctx, "nav.breadcrumb") }><a href="/">{ tr(ctx, "nav.home") }</a><span>/</span><a href={ templ.SafeURL(b.BrandsURL) }>{ tr(ctx, "nav.brands") }</a><span>/</span><span>{ b.Name }</span></nav>
 				@monoBadge(b.Monogram, b.Tone, true)
-				<h1>{ b.Name + " deals and price history" }</h1>
-				<p class="lede">{ "We read " + b.Name + "'s " + b.Market + " prices every day and judge each discount against our own 30-day price record, not the store's \"was\" price." }</p>
+				<h1>{ tr(ctx, "brand.heading", "store", b.Name) }</h1>
+				<p class="lede">{ tr(ctx, "brand.lede", "store", b.Name, "market", b.Market) }</p>
 				<div class="actions">
 					<a class="btn btn-primary" href={ templ.SafeURL(b.StoreURL) } rel="nofollow">
-						{ "Visit " + b.Name }
+						{ tr(ctx, "brand.visit", "store", b.Name) }
 						@icon("external")
 					</a>
 				</div>
 			</div>
 			<div class="tiles">
-				<p class="tiles-note"><span class="dot dot-green"></span>{ "On today's " + b.Market + " list" }</p>
-				<div class="tile"><span>{ "In stock" }</span><b>{ Amount(b.Coffees, b.Kind, b.Noun) }</b></div>
-				<div class={ "tile", templ.KV("tile-green", b.Drops > 0) }><span>Real drops</span><b>{ fmt.Sprint(b.Drops) }</b></div>
-				<div class={ "tile", templ.KV("tile-amber", b.Sales > 0) }><span>Store sales</span><b>{ fmt.Sprint(b.Sales) }</b></div>
+				<p class="tiles-note"><span class="dot dot-green"></span>{ tr(ctx, "brand.on_list", "market", b.Market) }</p>
+				<div class="tile"><span>{ tr(ctx, "brand.in_stock") }</span><b>{ trn(ctx, "kind."+b.Kind+".count", b.Coffees) }</b></div>
+				<div class={ "tile", templ.KV("tile-green", b.Drops > 0) }><span>{ tr(ctx, "brand.real_drops") }</span><b>{ fmt.Sprint(b.Drops) }</b></div>
+				<div class={ "tile", templ.KV("tile-amber", b.Sales > 0) }><span>{ tr(ctx, "brand.store_sales") }</span><b>{ fmt.Sprint(b.Sales) }</b></div>
 				<div class="tile"><span>{ b.BestLabel }</span><b>{ b.Best }</b></div>
 			</div>
 		</div>
@@ -158,12 +150,12 @@ templ brandHero(b Brand) {
 templ BrandPage(p Page, b Brand) {
 	@Layout(p, brandHero(b)) {
 		<section class="brand-list">
-			<h2>{ b.Name + " on today's " + b.Market + " list" }</h2>
+			<h2>{ tr(ctx, "brand.store_on_list", "store", b.Name, "market", b.Market) }</h2>
 			@dealsSection(b.Deals)
 		</section>
 		<section class="section">
 			<div class="card about-card">
-				<h2>{ "About this " + storeWord(b.Kind) }</h2>
+				<h2>{ tr(ctx, "kind."+b.Kind+".about") }</h2>
 				<dl class="facts">
 					for _, f := range b.About {
 						<div><dt>{ f.Label }</dt><dd>{ f.Value }</dd></div>
@@ -177,8 +169,8 @@ templ BrandPage(p Page, b Brand) {
 		if len(b.Others) > 0 {
 			<section class="section">
 				<div class="section-head">
-					<h2>Other stores on today's list</h2>
-					<a class="btn btn-ghost" href={ templ.SafeURL(b.BrandsURL) }>All brands</a>
+					<h2>{ tr(ctx, "brand.others") }</h2>
+					<a class="btn btn-ghost" href={ templ.SafeURL(b.BrandsURL) }>{ tr(ctx, "brand.all") }</a>
 				</div>
 				<div class="brand-grid">
 					for _, c := range b.Others {

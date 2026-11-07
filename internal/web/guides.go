@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
+	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
 	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
@@ -118,5 +119,5 @@ func (s *Server) historyGuide(w http.ResponseWriter, r *http.Request) {
 		Nav:         nav(market.US, "guides"),
 	}
 	p = chrome(r, p, "/en-us/")
-	s.render(w, r, http.StatusOK, views.HistoryGuide(p, cards, coffeeKind.labels))
+	s.render(w, r, http.StatusOK, views.HistoryGuide(p, cards, coffeeKind.labels(i18n.Source)))
 }

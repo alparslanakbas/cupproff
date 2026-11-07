@@ -14,6 +14,7 @@ type CategoryCard struct {
 // CategoryGroup is a section's categories on the categories page.
 type CategoryGroup struct {
 	Name  string
+	All   string // the group's link: "All coffee"
 	URL   string
 	Icon  string
 	Count string
@@ -75,8 +76,8 @@ type DealsBlock struct {
 
 // Categories is a market's category directory.
 templ Categories(p Page, market string, groups []CategoryGroup) {
-	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: market}, {Name: "Categories"}}, "All categories",
-		"Every coffee and tea category we follow, with what is in stock today. We sort products into categories by their names.")) {
+	@Layout(p, pageHead([]NavLink{{Name: tr(ctx, "nav.home"), URL: "/"}, {Name: market}, {Name: tr(ctx, "nav.categories")}}, tr(ctx, "nav.all_categories"),
+		tr(ctx, "categories.lede"))) {
 		for _, g := range groups {
 			<section class="cat-group">
 				<div class="section-head">
@@ -87,7 +88,7 @@ templ Categories(p Page, market string, groups []CategoryGroup) {
 						{ g.Name }
 					</h2>
 					<a class="btn btn-ghost" href={ templ.SafeURL(g.URL) }>
-						{ "All " + lower(g.Name) + ", " + g.Count }
+						{ g.All + ", " + g.Count }
 						@icon("arrow-right")
 					</a>
 				</div>
@@ -113,7 +114,7 @@ templ tileGrid(items []CategoryCard) {
 				<span class="tile-title">{ it.Label }</span>
 				<span class="tile-about">{ it.About }</span>
 				<span class="tile-go">
-					Open
+					{ tr(ctx, "categories.open") }
 					@icon("arrow-right")
 				</span>
 			</a>

@@ -29,9 +29,8 @@ import (
 // 63 decafs; teas from 1,284 pu-erhs to 42 chais. "Filter" (11) and "cold
 // brew" (6) were too few for a place on the strip.
 type category struct {
-	slug, label, icon string
-	noun              string // the page's heading: "Decaf coffee" prices in the US
-	include, exclude  string // PostgreSQL regular expressions, case-insensitive
+	slug, icon       string
+	include, exclude string // PostgreSQL regular expressions, case-insensitive
 }
 
 // origins are the producing countries and regions a single-origin coffee is
@@ -41,22 +40,22 @@ const origins = `ethiopia|kenya|colombia|brazil|guatemala|costa rica|rwanda|buru
 
 var (
 	coffeeCategories = []category{
-		{slug: "single-origin", label: "Single origin", icon: "globe", noun: "Single-origin coffee", include: origins, exclude: `\mblends?\M`},
-		{slug: "blends", label: "Blends", icon: "layers", noun: "Coffee blend", include: `\mblends?\M`},
-		{slug: "espresso", label: "Espresso", icon: "bolt", noun: "Espresso coffee", include: `espresso`},
-		{slug: "decaf", label: "Decaf", icon: "moon", noun: "Decaf coffee", include: `decaf`},
+		{slug: "single-origin", icon: "globe", include: origins, exclude: `\mblends?\M`},
+		{slug: "blends", icon: "layers", include: `\mblends?\M`},
+		{slug: "espresso", icon: "bolt", include: `espresso`},
+		{slug: "decaf", icon: "moon", include: `decaf`},
 	}
 	teaCategories = []category{
-		{slug: "black", label: "Black tea", icon: "drop", noun: "Black tea",
+		{slug: "black", icon: "drop",
 			include: `black tea|assam|darjeeling|ceylon|earl grey|breakfast|keemun|lapsang|dian ?hong`},
-		{slug: "green", label: "Green tea", icon: "sprout", noun: "Green tea",
+		{slug: "green", icon: "sprout",
 			include: `green tea|sencha|gyokuro|genmaicha|hojicha|dragon ?well|long ?jing|gunpowder|bancha|kukicha`, exclude: `matcha`},
-		{slug: "oolong", label: "Oolong", icon: "ring", noun: "Oolong tea", include: `oolong|tie ?guan ?yin|da ?hong ?pao|dan ?cong`},
-		{slug: "white", label: "White tea", icon: "asterisk", noun: "White tea", include: `white tea|silver needle|bai ?mu ?dan|white peony|shou ?mei`},
-		{slug: "pu-erh", label: "Pu-erh", icon: "disc", noun: "Pu-erh tea", include: `pu-?erh|\mpuer\M`},
-		{slug: "matcha", label: "Matcha", icon: "bowl", noun: "Matcha", include: `matcha`},
-		{slug: "chai", label: "Chai", icon: "star", noun: "Chai", include: `\mchai\M`},
-		{slug: "herbal", label: "Herbal", icon: "flower", noun: "Herbal tea", include: `herbal|rooibos|honeybush|chamomile|peppermint|hibiscus|tisane`},
+		{slug: "oolong", icon: "ring", include: `oolong|tie ?guan ?yin|da ?hong ?pao|dan ?cong`},
+		{slug: "white", icon: "asterisk", include: `white tea|silver needle|bai ?mu ?dan|white peony|shou ?mei`},
+		{slug: "pu-erh", icon: "disc", include: `pu-?erh|\mpuer\M`},
+		{slug: "matcha", icon: "bowl", include: `matcha`},
+		{slug: "chai", icon: "star", include: `\mchai\M`},
+		{slug: "herbal", icon: "flower", include: `herbal|rooibos|honeybush|chamomile|peppermint|hibiscus|tisane`},
 	}
 )
 
@@ -69,12 +68,21 @@ func (k kind) category(slug string) (category, bool) {
 	return category{}, false
 }
 
+// label is the category's name on the strip and in the filters, noun its
+// name in a heading ("Decaf coffee" prices), about its line on the
+// categories page: the catalog's cat.<slug>.* entries.
+func (c category) label(lang string) string { return i18n.T(lang, "cat."+c.slug+".label") }
+
+func (c category) noun(lang string) string { return i18n.T(lang, "cat."+c.slug+".noun") }
+
+func (c category) about(lang string) string { return i18n.T(lang, "cat."+c.slug+".about") }
+
 // sorts are the sister sites' orders; "" is the default, biggest drop.
 // unit_asc's label depends on the section (per kg, per 100 g).
 var sorts = []struct{ value, label string }{
-	{"", "Biggest drop"}, {"newest", "Newest"}, {"oldest", "Oldest"},
-	{"price_asc", "Price: low to high"}, {"price_desc", "Price: high to low"}, {"unit_asc", ""},
-	{"name_asc", "Name: A–Z"}, {"name_desc", "Name: Z–A"},
+	{"", "sort.biggest_drop"}, {"newest", "sort.newest"}, {"oldest", "sort.oldest"},
+	{"price_asc", "sort.price_asc"}, {"price_desc", "sort.price_desc"}, {"unit_asc", ""},
+	{"name_asc", "sort.name_asc"}, {"name_desc", "sort.name_desc"},
 }
 
 func validSort(v string) bool {
@@ -189,6 +197,7 @@ func listQuery(st listState) string {
 // buildList runs a list's queries for st and builds its rows and controls;
 // found is false when st names a store or a page the list doesn't have.
 func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base string, st listState, storeID int64, size int) (listState, bool, error) {
+	lang := m.Language()
 	cat, _ := k.category(st.cat)
 	// The stores of this section with stock here: the store control's
 	// options, and the check that ?roaster= names one of them.
@@ -257,33 +266,33 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 	}
 	st.pageURL = func(n int) string { return link(nil, n) }
 
-	d := views.Deals{Action: base, Show: st.show, Query: st.q, Cards: st.cards, Labels: k.labels, Total: st.total,
+	d := views.Deals{Action: base, Show: st.show, Query: st.q, Cards: st.cards, Labels: k.labels(lang), Total: st.total,
 		Pager: pager(st.page, pages, int(st.total), st.pageURL)}
-	for _, v := range []struct{ show, label string }{{"drops", "Real price drops"}, {"sales", "Store sales"}, {"", "All"}} {
-		d.Views = append(d.Views, views.NavLink{Name: v.label, URL: link(map[string]string{"show": v.show}, 1), Current: v.show == st.show})
+	for _, v := range []struct{ show, label string }{{"drops", "view.drops"}, {"sales", "view.sales"}, {"", "view.all"}} {
+		d.Views = append(d.Views, views.NavLink{Name: i18n.T(lang, v.label), URL: link(map[string]string{"show": v.show}, 1), Current: v.show == st.show})
 	}
 	switch st.show {
 	case "drops":
-		d.ViewNote = "Price drops confirmed by the price history we collect."
+		d.ViewNote = i18n.T(lang, "view.note.drops")
 	case "sales":
-		d.ViewNote = "Current sales as the stores show them on their own sites."
+		d.ViewNote = i18n.T(lang, "view.note.sales")
 	default:
-		d.ViewNote = "Everything in stock today, biggest drops first."
+		d.ViewNote = i18n.T(lang, "view.note.all")
 	}
 	if storeID == 0 || st.roaster != "" {
-		d.Roasters = append(d.Roasters, views.Option{Label: "All " + storePlural(k)})
+		d.Roasters = append(d.Roasters, views.Option{Label: k.text(lang, "all_stores")})
 		for _, b := range stores {
 			d.Roasters = append(d.Roasters, views.Option{Value: b.Slug, Label: b.Name, Selected: b.Slug == st.roaster})
 		}
 	}
-	d.Categories = append(d.Categories, views.Option{Label: "All categories"})
+	d.Categories = append(d.Categories, views.Option{Label: i18n.T(lang, "nav.all_categories")})
 	for _, c := range k.categories {
-		d.Categories = append(d.Categories, views.Option{Value: c.slug, Label: c.label, Selected: c.slug == st.cat})
+		d.Categories = append(d.Categories, views.Option{Value: c.slug, Label: c.label(lang), Selected: c.slug == st.cat})
 	}
 	for _, o := range sorts {
-		label := o.label
+		label := i18n.T(lang, o.label)
 		if o.value == "unit_asc" {
-			label = "Price " + strings.ToLower(k.labels.Unit) + ": low to high"
+			label = k.text(lang, "sort_unit")
 		}
 		d.Sorts = append(d.Sorts, views.Option{Value: o.value, Label: label, Selected: o.value == st.sort})
 	}
@@ -291,10 +300,10 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 		d.Chips = append(d.Chips, views.NavLink{Name: roasterName, URL: link(map[string]string{"roaster": ""}, 1)})
 	}
 	if st.cat != "" {
-		d.Chips = append(d.Chips, views.NavLink{Name: cat.label, URL: link(map[string]string{"cat": ""}, 1)})
+		d.Chips = append(d.Chips, views.NavLink{Name: cat.label(lang), URL: link(map[string]string{"cat": ""}, 1)})
 	}
 	if st.q != "" {
-		d.Chips = append(d.Chips, views.NavLink{Name: "“" + st.q + "”", URL: link(map[string]string{"q": ""}, 1)})
+		d.Chips = append(d.Chips, views.NavLink{Name: i18n.T(lang, "filter.query", "q", st.q), URL: link(map[string]string{"q": ""}, 1)})
 	}
 	if st.cat != "" || st.roaster != "" || st.sort != "" || st.q != "" {
 		d.ClearURL = link(map[string]string{"cat": "", "roaster": "", "sort": "", "q": ""}, 1)
@@ -303,21 +312,13 @@ func (s *Server) buildList(ctx context.Context, m market.Market, k kind, base st
 	if st.q != "" && st.total == 0 && storeID == 0 {
 		for _, other := range kinds {
 			if other.name != k.name {
-				d.Elsewhere = &views.NavLink{Name: "Search " + other.name + " for “" + st.q + "”",
+				d.Elsewhere = &views.NavLink{Name: other.text(lang, "search", "q", st.q),
 					URL: "/" + m.Code + "/" + other.listPath + "?q=" + url.QueryEscape(st.q)}
 			}
 		}
 	}
 	st.deals = d
 	return st, true, nil
-}
-
-// storePlural is what the store control calls a section's stores.
-func storePlural(k kind) string {
-	if k.name == teaKind.name {
-		return "tea houses"
-	}
-	return "roasters"
 }
 
 // pager is the sister sites' page row: the first and last page, the pages
@@ -347,12 +348,13 @@ func pager(page, pages, total int, pageURL func(int) string) views.Pager {
 // strip is the category strip of a market: each section, then its
 // categories; current marks the list being shown.
 func strip(m market.Market, current kind, cat string) []views.StripItem {
+	lang := m.Language()
 	var items []views.StripItem
 	for _, k := range kinds {
 		base := "/" + m.Code + "/" + k.listPath
-		items = append(items, views.StripItem{Label: k.nav, URL: base, Icon: k.icon, Current: k.name == current.name && cat == ""})
+		items = append(items, views.StripItem{Label: k.text(lang, "nav"), URL: base, Icon: k.icon, Current: k.name == current.name && cat == ""})
 		for _, c := range k.categories {
-			items = append(items, views.StripItem{Label: c.label, URL: base + "?cat=" + c.slug, Icon: c.icon,
+			items = append(items, views.StripItem{Label: c.label(lang), URL: base + "?cat=" + c.slug, Icon: c.icon,
 				Current: k.name == current.name && c.slug == cat})
 		}
 	}
@@ -371,7 +373,7 @@ func (s *Server) hero(ctx context.Context, m market.Market, k kind, fallback *ki
 		return h, err
 	}
 	h.Count = total
-	h.Tracked = views.Amount(total, k.name+" tracked", k.name+"s tracked")
+	h.Tracked = k.count(lang, "tracked", total)
 	stores, err := s.Q.RoasterFreshness(ctx)
 	if err != nil {
 		return h, err
@@ -421,8 +423,8 @@ func (s *Server) hero(ctx context.Context, m market.Market, k kind, fallback *ki
 		for _, p := range hist {
 			pts = append(pts, pricePoint{At: p.SeenAt.Time, Minor: p.PriceMinor})
 		}
-		h.TopChart = sparkArea(pts, time.Now(), 280, 90, rows[0].Title+" price history")
-		h.Labels = t.k.labels
+		h.TopChart = sparkArea(pts, time.Now(), 280, 90, i18n.T(lang, "chart.label", "title", rows[0].Title))
+		h.Labels = t.k.labels(lang)
 		break
 	}
 	return h, nil

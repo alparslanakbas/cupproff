@@ -6,7 +6,11 @@
 // shows to that country is the real price (measured 11 Oct 2026).
 package market
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/alparslanakbas/cupproof/internal/i18n"
+)
 
 // Market is one locale section of the site.
 type Market struct {
@@ -29,6 +33,8 @@ type Market struct {
 	Note string
 	// Hint is the short form of Note for the region chooser.
 	Hint string
+	// Variants are the market's pages in other languages than English.
+	Variants []Variant
 }
 
 // US is the first market.
@@ -50,16 +56,23 @@ var EU = Market{Key: "en-eu", Code: "en-eu", Lang: "en", Country: "DE", Currency
 	Hreflangs: []string{"en-DE", "en-AT", "en-BE", "en-NL", "en-LU", "en-FR", "en-IE", "en-IT", "en-ES", "en-PT",
 		"en-FI", "en-EE", "en-LV", "en-LT", "en-SK", "en-SI", "en-GR", "en-CY", "en-MT", "en-HR", "en-BG"},
 	Note: "Prices are the ones each store shows a buyer in Germany; with VAT they can differ in other EU countries.",
-	Hint: "Prices as shown in Germany"}
+	Hint: "Prices as shown in Germany",
+	// German first: 9 of the 27 EU stores are German (6 Nov 2026).
+	Variants: []Variant{{Lang: "de", Hreflangs: []string{"de-DE", "de-AT", "de-BE", "de-LU"}}}}
 
 // All lists the live markets, in the order the region selector shows them.
 var All = []Market{US, UK, EU}
 
-// ByCode finds a live market by its URL segment.
+// ByCode finds a live market by its URL segment, in any of its languages.
 func ByCode(code string) (Market, bool) {
 	for _, m := range All {
 		if m.Code == code {
 			return m, true
+		}
+		for _, v := range m.Variants {
+			if v.Lang+"-"+m.Region() == code {
+				return m.In(v), true
+			}
 		}
 	}
 	return Market{}, false
@@ -80,4 +93,56 @@ func ByKey(key string) (Market, bool) {
 		}
 	}
 	return Market{}, false
+}
+
+// Variant is a market's pages in another language: the same stores and
+// prices at their own address, the language before the market's region
+// ("de-eu").
+type Variant struct {
+	Lang string // BCP 47 tag for <html lang>, and the catalog's language
+	// Hreflangs as for Market: only the market's countries where the
+	// language is spoken, so that a searcher elsewhere isn't sent to prices
+	// for Germany.
+	Hreflangs []string
+}
+
+// Region is the market's part of the address after the language: "eu".
+func (m Market) Region() string {
+	_, region, _ := strings.Cut(m.Key, "-")
+	return region
+}
+
+// In is the market's pages in v's language: their own address, language
+// and hreflangs, and the market's name and notes from the catalog.
+func (m Market) In(v Variant) Market {
+	region := m.Region()
+	m.Code, m.Lang, m.Hreflangs = v.Lang+"-"+region, v.Lang, v.Hreflangs
+	m.Name = i18n.T(v.Lang, "market."+region+".name")
+	if m.Note != "" {
+		m.Note = i18n.T(v.Lang, "market."+region+".note")
+		m.Hint = i18n.T(v.Lang, "market."+region+".hint")
+	}
+	return m
+}
+
+// Versions are the market's pages in each of its languages, English first.
+func (m Market) Versions() []Market {
+	base, ok := ByKey(m.Key)
+	if !ok {
+		return []Market{m}
+	}
+	versions := []Market{base}
+	for _, v := range base.Variants {
+		versions = append(versions, base.In(v))
+	}
+	return versions
+}
+
+// Localize moves a path of the market's English pages to this version's:
+// "/en-eu/coffee/x" becomes "/de-eu/coffee/x". Other paths stay as they are.
+func (m Market) Localize(path string) string {
+	if rest, ok := strings.CutPrefix(path, "/"+m.Key+"/"); ok {
+		return "/" + m.Code + "/" + rest
+	}
+	return path
 }

@@ -12,6 +12,8 @@ type Page struct {
 	JSONLD      string // already marshalled with HTML escaping
 	NoIndex     bool
 	Nav         []NavLink   // the header's menu
+	Languages []LangLink // the same page in the market's other languages
+	MarketBase string // the market's pages in the page's language: "/de-eu/"
 	Regions     []NavLink   // the same page in the other markets, when it exists there
 	MarketNote  string      // what a buyer must know about this market's prices
 	Strip       []StripItem // the category strip under the band, on the lists
@@ -31,6 +33,7 @@ type NavLink struct {
 	Name    string
 	URL     string
 	Current bool
+	Icon    string // the phone's tab bar icon; the menu entries without one get no tab
 }
 
 // StripItem is one entry of the category strip.
@@ -52,38 +55,6 @@ type Alternate struct {
 	URL  string
 }
 
-// currentRegion is the short name of the region the page belongs to.
-func currentRegion(regions []NavLink) string {
-	for _, r := range regions {
-		if r.Current {
-			return r.Name
-		}
-	}
-	return "Region"
-}
-
-// tabs are the phone's tab bar: the deals, then the menu's sections.
-func tabs(nav []NavLink) []StripItem {
-	items := []StripItem{{Label: "Deals", URL: "/", Icon: "home"}}
-	icons := map[string]string{"Coffee": "cup", "Tea": "leaf", "Brands": "store", "Guides": "book"}
-	for _, n := range nav {
-		if icon, ok := icons[n.Name]; ok {
-			items = append(items, StripItem{Label: n.Name, URL: n.URL, Icon: icon, Current: n.Current})
-		}
-	}
-	return items
-}
-
-func themeTitle(name string) string {
-	switch name {
-	case "light":
-		return "Light theme"
-	case "dark":
-		return "Dark theme"
-	}
-	return "System theme"
-}
-
 func themeIcon(name string) string {
 	switch name {
 	case "light":
@@ -103,12 +74,12 @@ func searchAction(p Page) string {
 
 // footerCategories are the footer's category links, on the US lists.
 var footerCategories = []NavLink{
-	{Name: "Single-origin coffee", URL: "/en-us/?cat=single-origin"}, {Name: "Coffee blends", URL: "/en-us/?cat=blends"},
-	{Name: "Espresso coffee", URL: "/en-us/?cat=espresso"}, {Name: "Decaf coffee", URL: "/en-us/?cat=decaf"},
-	{Name: "Black tea", URL: "/en-us/tea/?cat=black"}, {Name: "Green tea", URL: "/en-us/tea/?cat=green"},
-	{Name: "Oolong tea", URL: "/en-us/tea/?cat=oolong"}, {Name: "White tea", URL: "/en-us/tea/?cat=white"},
-	{Name: "Pu-erh tea", URL: "/en-us/tea/?cat=pu-erh"}, {Name: "Matcha", URL: "/en-us/tea/?cat=matcha"},
-	{Name: "Chai", URL: "/en-us/tea/?cat=chai"}, {Name: "Herbal tea", URL: "/en-us/tea/?cat=herbal"},
+	{Name: "footer.cat.single-origin", URL: "/en-us/?cat=single-origin"}, {Name: "footer.cat.blends", URL: "/en-us/?cat=blends"},
+	{Name: "footer.cat.espresso", URL: "/en-us/?cat=espresso"}, {Name: "footer.cat.decaf", URL: "/en-us/?cat=decaf"},
+	{Name: "footer.cat.black", URL: "/en-us/tea/?cat=black"}, {Name: "footer.cat.green", URL: "/en-us/tea/?cat=green"},
+	{Name: "footer.cat.oolong", URL: "/en-us/tea/?cat=oolong"}, {Name: "footer.cat.white", URL: "/en-us/tea/?cat=white"},
+	{Name: "footer.cat.pu-erh", URL: "/en-us/tea/?cat=pu-erh"}, {Name: "footer.cat.matcha", URL: "/en-us/tea/?cat=matcha"},
+	{Name: "footer.cat.chai", URL: "/en-us/tea/?cat=chai"}, {Name: "footer.cat.herbal", URL: "/en-us/tea/?cat=herbal"},
 }
 
 // Amount writes "1 tea" or "2,956 teas".
@@ -174,13 +145,13 @@ templ Layout(p Page, hero templ.Component) {
 						</a>
 						<form class="search" role="search" method="get" action={ templ.SafeURL(searchAction(p)) }>
 							<label>
-								<span class="sr-only">Search coffees, teas or stores</span>
+								<span class="sr-only">{ tr(ctx, "search.placeholder") }</span>
 								@icon("search")
-								<input type="search" name="q" value={ p.Query } maxlength="80" placeholder="Search coffees, teas or stores"/>
+								<input type="search" name="q" value={ p.Query } maxlength="80" placeholder={ tr(ctx, "search.placeholder") }/>
 							</label>
 						</form>
 						if len(p.Nav) > 0 {
-							<nav class="mainnav" aria-label="Main menu">
+							<nav class="mainnav" aria-label={ tr(ctx, "nav.main") }>
 								for _, n := range p.Nav {
 									if n.Current {
 										<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
@@ -192,16 +163,20 @@ templ Layout(p Page, hero templ.Component) {
 						}
 						<a class="hdr-btn quiz-btn" href="/which-coffee">
 							@icon("compass")
-							<span>Quiz</span>
+							<span>{ tr(ctx, "nav.quiz") }</span>
 						</a>
 						if len(p.Regions) > 0 {
 							<details class="region">
 								<summary>
-									@icon("globe")
-									<span>{ currentRegion(p.Regions) }</span>
+									if len(p.Languages) > 1 {
+										@flag(currentLang(p.Languages))
+									} else {
+										@icon("globe")
+									}
+									<span>{ currentRegion(ctx, p.Regions) }</span>
 									@icon("caret-down")
 								</summary>
-								<nav class="region-menu" aria-label="Region">
+								<nav class="region-menu" aria-label={ tr(ctx, "nav.region") }>
 									for _, n := range p.Regions {
 										if n.Current {
 											<a href={ templ.SafeURL(n.URL) } aria-current="page">{ n.Name }</a>
@@ -209,30 +184,46 @@ templ Layout(p Page, hero templ.Component) {
 											<a href={ templ.SafeURL(n.URL) }>{ n.Name }</a>
 										}
 									}
+									if len(p.Languages) > 1 {
+										<span class="menu-sep" role="separator" aria-label={ tr(ctx, "nav.language") }></span>
+										for _, l := range p.Languages {
+											if l.Current {
+												<a class="lang-link" href={ templ.SafeURL(l.URL) } hreflang={ l.Lang } lang={ l.Lang } aria-current="page">
+													@flag(l.Lang)
+													<span>{ l.Name }</span>
+												</a>
+											} else {
+												<a class="lang-link" href={ templ.SafeURL(l.URL) } hreflang={ l.Lang } lang={ l.Lang }>
+													@flag(l.Lang)
+													<span>{ l.Name }</span>
+												</a>
+											}
+										}
+									}
 								</nav>
 							</details>
 						}
 						<a class="hdr-btn watch-btn" href="/watchlist">
 							@icon("bookmark")
-							<span>Watchlist</span>
+							<span>{ tr(ctx, "nav.watchlist") }</span>
 							if p.Watching > 0 {
 								<b class="count-pill">{ fmt.Sprint(p.Watching) }</b>
 							}
 						</a>
 						if len(p.Themes) > 0 {
-							<nav class="theme" aria-label="Theme">
+							<nav class="theme" aria-label={ tr(ctx, "nav.theme") }>
 								for _, t := range p.Themes {
 									<a
 										href={ templ.SafeURL(t.URL) }
 										rel="nofollow"
-										title={ themeTitle(t.Name) }
+										title={ themeTitle(ctx, t.Name) }
 										class={ "theme-" + t.Name }
 										if t.Current {
 											aria-current="true"
 										}
 									>
 										@icon(themeIcon(t.Name))
-										<span class="sr-only">{ themeTitle(t.Name) }</span>
+										<span class="sr-only">{ themeTitle(ctx, t.Name) }</span>
 									</a>
 								}
 							</nav>
@@ -248,12 +239,12 @@ templ Layout(p Page, hero templ.Component) {
 				{ children... }
 			</main>
 			if p.Comparing > 0 {
-				<div class="compare-bar" role="region" aria-label="Comparison">
+				<div class="compare-bar" role="region" aria-label={ tr(ctx, "compare.bar") }>
 					<div class="wrap compare-row">
 						@icon("scales")
-						<span>{ fmt.Sprintf("%d of 4 products picked to compare", p.Comparing) }</span>
-						<a class="btn btn-primary" href="/compare">Compare now</a>
-						<a class="compare-clear" href={ templ.SafeURL(p.ClearCompare) } rel="nofollow">Clear</a>
+						<span>{ tr(ctx, "compare.picked", "n", fmt.Sprint(p.Comparing)) }</span>
+						<a class="btn btn-primary" href="/compare">{ tr(ctx, "compare.now") }</a>
+						<a class="compare-clear" href={ templ.SafeURL(p.ClearCompare) } rel="nofollow">{ tr(ctx, "compare.clear") }</a>
 					</div>
 				</div>
 			}
@@ -264,45 +255,45 @@ templ Layout(p Page, hero templ.Component) {
 							@logoMark()
 							<span>CoffeeProof</span>
 						</a>
-						<p>We read coffee and tea prices every day and judge discounts by the price history we collect, not by the store's own "was" price.</p>
+						<p>{ tr(ctx, "footer.about") }</p>
 						<a class="footer-mail" href="/contact">
 							@icon("mail")
-							Contact us
+							{ tr(ctx, "footer.contact_us") }
 						</a>
 					</div>
 					<div>
-						<h2>Explore</h2>
+						<h2>{ tr(ctx, "footer.explore") }</h2>
 						<nav class="footer-nav">
-							<a href="/">Today's deals</a>
-							<a href="/en-us/categories/">All categories</a>
-							<a href="/en-us/brands/">Roasters and tea houses</a>
-							<a href="/guides/">Coffee guides</a>
-							<a href="/glossary">Coffee and tea glossary</a>
-							<a href="/calculators/">Calculators</a>
-							<a href="/which-coffee">Which coffee?</a>
-							<a href="/black-friday">Black Friday deals check</a>
-							<a href="/cheapest-coffee">Cheapest coffee per kg</a>
+							<a href={ templ.SafeURL(localURL(ctx, p, "/")) }>{ tr(ctx, "footer.todays_deals") }</a>
+							<a href={ templ.SafeURL(localURL(ctx, p, "/en-us/categories/")) }>{ tr(ctx, "nav.all_categories") }</a>
+							<a href={ templ.SafeURL(localURL(ctx, p, "/en-us/brands/")) }>{ tr(ctx, "nav.stores") }</a>
+							<a href="/guides/">{ tr(ctx, "footer.guides") }</a>
+							<a href="/glossary">{ tr(ctx, "footer.glossary") }</a>
+							<a href="/calculators/">{ tr(ctx, "nav.calculators") }</a>
+							<a href="/which-coffee">{ tr(ctx, "nav.which_coffee") }</a>
+							<a href="/black-friday">{ tr(ctx, "footer.black_friday") }</a>
+							<a href="/cheapest-coffee">{ tr(ctx, "footer.cheapest") }</a>
 						</nav>
 					</div>
 					<div>
-						<h2>Transparency</h2>
+						<h2>{ tr(ctx, "common.transparency") }</h2>
 						<nav class="footer-nav">
-							<a href="/how-it-works">How it works</a>
-							<a href="/about">About</a>
-							<a href="/contact">Contact</a>
-							<a href="/privacy">Privacy policy</a>
-							<a href="/cookies">Cookie policy</a>
-							<a href="/terms">Terms of use</a>
-							<a href="/watchlist">My watchlist</a>
+							<a href="/how-it-works">{ tr(ctx, "footer.how_it_works") }</a>
+							<a href="/about">{ tr(ctx, "footer.about_us") }</a>
+							<a href="/contact">{ tr(ctx, "footer.contact") }</a>
+							<a href="/privacy">{ tr(ctx, "footer.privacy") }</a>
+							<a href="/cookies">{ tr(ctx, "footer.cookies") }</a>
+							<a href="/terms">{ tr(ctx, "footer.terms") }</a>
+							<a href="/watchlist">{ tr(ctx, "footer.my_watchlist") }</a>
 						</nav>
 					</div>
 					<div>
-						<h2>How prices are read</h2>
+						<h2>{ tr(ctx, "footer.how_read") }</h2>
 						if p.MarketNote != "" {
 							<p>{ p.MarketNote }</p>
 						}
-						<p>Prices are the ones each store shows to your country, read daily; shipping is not included. A real drop is measured against the price a product sold for on at least 7 of the last 30 days, never against the store's own "was" price.</p>
-						<nav class="footer-regions" aria-label="Regions">
+						<p>{ tr(ctx, "footer.how_read_text") }</p>
+						<nav class="footer-regions" aria-label={ tr(ctx, "nav.regions") }>
 							<a href="/en-us/">US</a>
 							<a href="/en-gb/">UK</a>
 							<a href="/en-eu/">EU</a>
@@ -310,21 +301,21 @@ templ Layout(p Page, hero templ.Component) {
 					</div>
 				</div>
 				<div class="wrap footer-links">
-					<h2>Popular categories</h2>
+					<h2>{ tr(ctx, "footer.popular") }</h2>
 					<div>
 						for _, c := range footerCategories {
-							<a href={ templ.SafeURL(c.URL) }>{ c.Name }</a>
+							<a href={ templ.SafeURL(localURL(ctx, p, c.URL)) }>{ tr(ctx, c.Name) }</a>
 						}
 					</div>
 				</div>
 				<div class="wrap footer-bottom">
-					<span>CoffeeProof is independent. Purchases happen on the store's own site.</span>
-					<span>Prices checked daily.</span>
+					<span>{ tr(ctx, "footer.independent") }</span>
+					<span>{ tr(ctx, "footer.checked_daily") }</span>
 				</div>
 			</footer>
 			if len(p.Nav) > 0 {
-				<nav class="tabbar" aria-label="Sections">
-					for _, t := range tabs(p.Nav) {
+				<nav class="tabbar" aria-label={ tr(ctx, "nav.sections") }>
+					for _, t := range tabs(ctx, p) {
 						<a
 							href={ templ.SafeURL(t.URL) }
 							if t.Current {
@@ -343,7 +334,7 @@ templ Layout(p Page, hero templ.Component) {
 
 // categoryStrip is the sister sites' strip of round icons under the band.
 templ categoryStrip(items []StripItem) {
-	<nav class="cat-strip" aria-label="Categories">
+	<nav class="cat-strip" aria-label={ tr(ctx, "nav.categories") }>
 		<div class="wrap cat-strip-row">
 			for _, it := range items {
 				<a

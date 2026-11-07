@@ -49,9 +49,10 @@ func TestCatalogsMatchEnglish(t *testing.T) {
 	}
 }
 
-// asked finds the ids the code asks for by name; an id built at run time
-// ("currency."+code) is checked by its caller's tests.
-var asked = regexp.MustCompile(`i18n\.([TN])\(\s*[^,()]+,\s*"([^"]+)"\s*[,)]`)
+// asked finds the ids the code asks for by name, in Go (i18n.T, i18n.N) and
+// in the templates (tr, trn); an id built at run time ("currency."+code) is
+// checked by its caller's tests.
+var asked = regexp.MustCompile(`(?:i18n\.([TN])|\b(tr|trn))\(\s*[^,()]+,\s*"([^"]+)"\s*[,)]`)
 
 func TestCodeAsksOnlyForKnownIDs(t *testing.T) {
 	n := 0
@@ -66,8 +67,8 @@ func TestCodeAsksOnlyForKnownIDs(t *testing.T) {
 		}
 		for _, m := range asked.FindAllStringSubmatch(string(b), -1) {
 			n++
-			id := m[2]
-			if m[1] == "N" {
+			id := m[3]
+			if m[1] == "N" || m[2] == "trn" {
 				id += ".other"
 			}
 			if !Has(Source, id) {
@@ -105,7 +106,7 @@ func TestPluralForms(t *testing.T) {
 		n    int64
 		want string
 	}{
-		{"en", 1, "1 store"}, {"en", 0, "0 stores"}, {"en", 12345, "12345 stores"},
+		{"en", 1, "1 store"}, {"en", 0, "0 stores"}, {"en", 12345, "12,345 stores"},
 		{"de", 12345, "12.345 stores"}, // no German text: the English one, in German digits
 		{"fr", 0, "0 store"},           // French counts zero as one
 		{"ja", 1, "1 stores"},          // Japanese has a single form

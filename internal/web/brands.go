@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
+	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
 	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
@@ -21,6 +22,7 @@ import (
 
 func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 	m, ok := market.ByCode(r.PathValue("market"))
+	lang := m.Language()
 	if !ok {
 		s.notFound(w, r)
 		return
@@ -40,9 +42,9 @@ func (s *Server) brandsIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	path := "/" + m.Code + "/brands/"
 	p := views.Page{
-		Title: "Coffee roasters and tea houses in the " + m.Name + " — CoffeeProof", Lang: m.Lang,
-		Description: fmt.Sprintf("%d coffee roasters and %d tea houses selling in the %s, with today's prices and how many show a real price drop.",
-			len(b.Roasters), len(b.TeaHouses), m.Name),
+		Title: i18n.T(lang, "brands.title", "in_market", inMarket(lang, m)), Lang: m.Lang,
+		Description: i18n.T(lang, "brands.desc", "roasters", fmt.Sprint(len(b.Roasters)), "houses", fmt.Sprint(len(b.TeaHouses)),
+			"in_market", inMarket(lang, m)),
 		Canonical: s.SiteURL + path,
 		Nav:       nav(m, "brands"),
 	}
@@ -96,14 +98,14 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	title := fmt.Sprintf("%s %s prices and price history in the %s", store.Name, k.name, m.Name)
+	title := k.text(lang, "brand_title", "store", store.Name, "in_market", inMarket(lang, m))
 	if st.page > 1 {
-		title = fmt.Sprintf("%s, page %d", title, st.page)
+		title = i18n.T(lang, "listing.page_title", "title", title, "n", fmt.Sprint(st.page))
 	}
 	p := views.Page{
 		Title: title + " — CoffeeProof", Lang: m.Lang,
-		Description: fmt.Sprintf("%s in the %s: %s, %s today. Each discount is judged against our own 30-day price record.",
-			store.Name, m.Name, views.Amount(me.Coffees, k.name, k.name+"s"), views.Amount(me.Drops, "real price drop", "real price drops")),
+		Description: i18n.T(lang, "brand.desc", "store", store.Name, "in_market", inMarket(lang, m),
+			"products", k.count(lang, "count", me.Coffees), "drops", i18n.N(lang, "count.real_price_drops", me.Drops)),
 		Canonical: s.SiteURL + st.pageURL(st.page),
 		NoIndex:   st.filtered(),
 		Nav:       nav(m, "brands"),
@@ -123,33 +125,30 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 	}
 	p = s.inMarkets(p, m, k, paths, "")
 
-	unit := "Best price per kg"
-	if k.name == teaKind.name {
-		unit = "Best price per 100 g"
-	}
+	unit := k.text(lang, "best_unit")
 	v := views.Brand{
 		Name: store.Name, Monogram: monogram(store.Name), Tone: tone(store.Slug),
 		Market: m.Short, Kind: k.name, Noun: k.name + "s", StoreURL: store.BaseUrl,
 		Coffees: me.Coffees, Drops: me.Drops, Sales: me.Sales,
 		BestLabel: unit, Best: k.perUnit(lang, me.BestPrice, me.BestGrams, m.Currency),
-		Deals: st.deals, Labels: k.labels, Others: others,
+		Deals: st.deals, Labels: k.labels(lang), Others: others,
 		BrandsURL: "/" + m.Code + "/brands/",
 	}
-	if c := countryName(store.Country); c != "" {
-		v.About = append(v.About, views.Fact{Label: "Based in", Value: c})
+	if c := countryName(lang, store.Country); c != "" {
+		v.About = append(v.About, views.Fact{Label: i18n.T(lang, "brand.based_in"), Value: c})
 	}
-	v.About = append(v.About, views.Fact{Label: "Prices here", Value: "In " + currencyName(lang, m.Currency) + ", as the store shows them to buyers in the " + m.Short})
+	v.About = append(v.About, views.Fact{Label: i18n.T(lang, "brand.prices_here"), Value: i18n.T(lang, "brand.prices_here_value", "currency", currencyName(lang, m.Currency), "market", m.Short)})
 	// A store selling in another currency than its own: say so, because its
 	// drops here count only when its own price drops too (see own_price).
 	if own := orEmpty(store.Currency); own != "" && own != m.Currency {
-		v.About = append(v.About, views.Fact{Label: "Its own currency", Value: currencyName(lang, own)})
-		v.RateNote = fmt.Sprintf("%s sets its prices in %s; the %s shows here are converted. A lower price here counts as a real drop only when its price in %s dropped too.",
-			store.Name, currencyName(lang, own), currencyName(lang, m.Currency), currencyName(lang, own))
+		v.About = append(v.About, views.Fact{Label: i18n.T(lang, "brand.own_currency"), Value: currencyName(lang, own)})
+		v.RateNote = i18n.T(lang, "brand.rate_note", "store", store.Name, "own", currencyName(lang, own),
+			"currency", currencyName(lang, m.Currency))
 	}
 	if n := len(store.ShipsTo); n > 0 {
-		v.About = append(v.About, views.Fact{Label: "Ships to", Value: views.Amount(int64(n), "country", "countries")})
+		v.About = append(v.About, views.Fact{Label: i18n.T(lang, "brand.ships_to"), Value: i18n.N(lang, "count.countries", int64(n))})
 	}
-	v.About = append(v.About, views.Fact{Label: "Price checks", Value: "Every day"})
+	v.About = append(v.About, views.Fact{Label: i18n.T(lang, "brand.price_checks"), Value: i18n.T(lang, "brand.every_day")})
 	p.Query = st.q
 	p = chrome(r, p, "/"+m.Code+"/"+k.listPath)
 	s.render(w, r, http.StatusOK, views.BrandPage(p, v))
@@ -157,12 +156,12 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 
 // brandCard is a store as the brands index and "other stores" show it.
 func brandCard(m market.Market, row db.ListBrandsRow) views.BrandCard {
-	k := kindOf(row.Kind)
+	k, lang := kindOf(row.Kind), m.Language()
 	return views.BrandCard{
 		URL:  "/" + m.Code + "/brands/" + row.Slug,
 		Name: row.Name, Monogram: monogram(row.Name), Tone: tone(row.Slug),
-		Country: countryName(row.Country),
-		Count:   views.Amount(row.Coffees, k.name, k.name+"s") + " on today's " + m.Short + " list",
+		Country: countryName(lang, row.Country),
+		Count:   k.count(lang, "card_count", row.Coffees, "market", m.Short),
 		Drops:   row.Drops, Sales: row.Sales,
 	}
 }
@@ -202,20 +201,15 @@ func tone(slug string) int {
 }
 
 // countryName names the country a store's /meta.json gives, "" when it gave
-// none. Only the countries of the stores we read; another code shows as is.
-func countryName(code *string) string {
+// none. The catalog names the countries of the stores we read (country.*);
+// another code shows as is.
+func countryName(lang string, code *string) string {
 	if code == nil {
 		return ""
 	}
-	names := map[string]string{
-		"US": "the United States", "GB": "the United Kingdom", "DE": "Germany", "ES": "Spain", "SE": "Sweden",
-		"DK": "Denmark", "FR": "France", "NO": "Norway", "FI": "Finland", "IE": "Ireland", "IT": "Italy",
-		"NL": "the Netherlands", "AU": "Australia", "CA": "Canada", "NZ": "New Zealand", "BE": "Belgium",
-		"AT": "Austria", "CH": "Switzerland", "PT": "Portugal",
-	}
 	c := strings.ToUpper(strings.TrimSpace(*code))
-	if n, ok := names[c]; ok {
-		return n
+	if !i18n.Has(i18n.Source, "country."+c) {
+		return c
 	}
-	return c
+	return i18n.T(lang, "country."+c)
 }

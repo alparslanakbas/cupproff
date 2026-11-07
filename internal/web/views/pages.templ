@@ -172,26 +172,6 @@ func verdictClass(o Offer) string {
 	return "verdict"
 }
 
-func verdictTitle(o Offer) string {
-	switch {
-	case !o.Available:
-		return "Out of stock"
-	case o.LowestSince != "":
-		return "Lowest since " + o.LowestSince
-	case o.LowestIn30:
-		return "Lowest in 30 days"
-	case o.RealDrop > 0:
-		return fmt.Sprintf("Real drop −%d%%", o.RealDrop)
-	case o.StoreWas != "":
-		return "Store sale, not a real drop"
-	case o.RateNote != "":
-		return o.RateNote
-	case o.Usual == "":
-		return "Too new to judge"
-	}
-	return "No deal today"
-}
-
 // orDash is a figure or "—" when there is none (never a guess).
 func orDash(s string) string {
 	if s == "" {
@@ -204,16 +184,16 @@ func orDash(s string) string {
 // green, else the store's own sale in amber; out of stock beside it.
 templ dealBadge(c Card) {
 	if c.LowestSince != "" {
-		<span class="badge badge-green">Lowest since { c.LowestSince }</span>
+		<span class="badge badge-green">{ tr(ctx, "deal.lowest_since", "date", c.LowestSince) }</span>
 	} else if c.LowestIn30 {
-		<span class="badge badge-green">Lowest in 30 days</span>
+		<span class="badge badge-green">{ tr(ctx, "deal.lowest_30") }</span>
 	} else if c.RealDrop > 0 {
-		<span class="badge badge-green">{ fmt.Sprintf("Real drop −%d%%", c.RealDrop) }</span>
+		<span class="badge badge-green">{ tr(ctx, "deal.real_drop", "pct", fmt.Sprint(c.RealDrop)) }</span>
 	} else if c.StorePercent > 0 {
-		<span class="badge badge-amber">{ fmt.Sprintf("Store sale −%d%%", c.StorePercent) }</span>
+		<span class="badge badge-amber">{ tr(ctx, "deal.store_sale_pct", "pct", fmt.Sprint(c.StorePercent)) }</span>
 	}
 	if c.OutOfStock {
-		<span class="badge">Out of stock</span>
+		<span class="badge">{ tr(ctx, "deal.out_of_stock") }</span>
 	}
 }
 
@@ -246,7 +226,7 @@ templ productRow(c Card, labels Labels) {
 			<div class="deal-meta">
 				<span class="tracked">
 					@icon("seal")
-					Price history tracked
+					{ tr(ctx, "card.history_tracked") }
 				</span>
 				if c.Checked != "" {
 					<span>{ c.Checked }</span>
@@ -255,10 +235,10 @@ templ productRow(c Card, labels Labels) {
 					<a href={ templ.SafeURL(c.CompareURL) } rel="nofollow">
 						if c.Compared {
 							@icon("check")
-							Added to comparison
+							{ tr(ctx, "card.added_compare") }
 						} else {
 							@icon("scales")
-							Compare
+							{ tr(ctx, "card.compare") }
 						}
 					</a>
 				}
@@ -268,10 +248,10 @@ templ productRow(c Card, labels Labels) {
 			<div class="amount">{ c.Price }</div>
 			if c.Saved != "" {
 				<div class="was"><s>{ c.Usual }</s></div>
-				<div class="save-row"><span class="save-pill">{ fmt.Sprintf("%d%%", c.RealDrop) }</span><span>You save { c.Saved }</span></div>
+				<div class="save-row"><span class="save-pill">{ fmt.Sprintf("%d%%", c.RealDrop) }</span><span>{ tr(ctx, "deal.you_save", "amount", c.Saved) }</span></div>
 			} else if c.StorePercent > 0 {
 				<div class="was"><s>{ c.StoreWas }</s></div>
-				<div class="save-row"><span class="badge badge-amber">{ fmt.Sprintf("%d%% off at the store", c.StorePercent) }</span></div>
+				<div class="save-row"><span class="badge badge-amber">{ tr(ctx, "deal.store_off", "pct", fmt.Sprint(c.StorePercent)) }</span></div>
 			}
 			if c.PerUnit != "" {
 				<div class="unit">{ c.PerUnit }</div>
@@ -281,10 +261,10 @@ templ productRow(c Card, labels Labels) {
 			if c.Chart != "" {
 				@templ.Raw(c.Chart)
 			} else {
-				<span class="nochart">History starts today</span>
+				<span class="nochart">{ tr(ctx, "card.history_starts") }</span>
 			}
 			<a class="history-link" href={ templ.SafeURL(c.URL) }>
-				See price history
+				{ tr(ctx, "card.see_history") }
 				@icon("arrow-right")
 			</a>
 		</div>
@@ -299,10 +279,10 @@ templ productRow(c Card, labels Labels) {
 				<a class="btn btn-ghost btn-small" href={ templ.SafeURL(c.CompareURL) } rel="nofollow">
 					if c.Compared {
 						@icon("check")
-						Added
+						{ tr(ctx, "card.added") }
 					} else {
 						@icon("scales")
-						Compare
+						{ tr(ctx, "card.compare") }
 					}
 				</a>
 			}
@@ -338,7 +318,7 @@ templ heroBand(h Hero) {
 					</span>
 				}
 				if h.LastCheck != "" {
-					<span><i class="live-dot" aria-hidden="true"></i>Last check { h.LastCheck }</span>
+					<span><i class="live-dot" aria-hidden="true"></i>{ tr(ctx, "hero.last_check", "time", h.LastCheck) }</span>
 				}
 				if h.Currency != "" {
 					<span>{ h.Currency }</span>
@@ -352,7 +332,7 @@ templ heroBand(h Hero) {
 }
 
 templ crumbs(links []NavLink) {
-	<nav class="crumbs" aria-label="Breadcrumb">
+	<nav class="crumbs" aria-label={ tr(ctx, "nav.breadcrumb") }>
 		for i, l := range links {
 			if i > 0 {
 				<span aria-hidden="true">/</span>
@@ -375,32 +355,32 @@ templ featuredDeal(c Card, chart string, labels Labels) {
 			}
 		</a>
 		<a class="featured-info" href={ templ.SafeURL(c.URL) }>
-			<span class="kicker">Today's top deal</span>
+			<span class="kicker">{ tr(ctx, "top.kicker") }</span>
 			<h2>{ c.Title }</h2>
 			<p class="featured-meta">{ c.Roaster } · { c.Size }</p>
 			<p class="checked">
 				@icon("seal")
-				Checked against price history
+				{ tr(ctx, "top.checked") }
 			</p>
 		</a>
 		<div class="featured-price">
 			if c.LowestSince != "" {
-				<span class="badge badge-green">Lowest since { c.LowestSince }</span>
+				<span class="badge badge-green">{ tr(ctx, "deal.lowest_since", "date", c.LowestSince) }</span>
 			} else if c.LowestIn30 {
-				<span class="badge badge-green">Lowest in 30 days</span>
+				<span class="badge badge-green">{ tr(ctx, "deal.lowest_30") }</span>
 			}
 			<div class="featured-amount">{ c.Price }</div>
 			if c.Saved != "" {
-				<div class="save-row"><span class="save-pill">{ fmt.Sprintf("%d%%", c.RealDrop) }</span><span>You save { c.Saved }</span></div>
+				<div class="save-row"><span class="save-pill">{ fmt.Sprintf("%d%%", c.RealDrop) }</span><span>{ tr(ctx, "deal.you_save", "amount", c.Saved) }</span></div>
 			} else if c.StorePercent > 0 {
-				<div class="save-row"><span class="badge badge-amber">{ fmt.Sprintf("Store sale %d%%", c.StorePercent) }</span></div>
+				<div class="save-row"><span class="badge badge-amber">{ tr(ctx, "deal.store_sale_top", "pct", fmt.Sprint(c.StorePercent)) }</span></div>
 			}
 		</div>
 		<div class="featured-chart">
 			if chart != "" {
 				@templ.Raw(chart)
 			} else {
-				<p>Price history is still building up. The chart will appear here as it grows.</p>
+				<p>{ tr(ctx, "top.building") }</p>
 			}
 		</div>
 		<div class="featured-actions">
@@ -408,7 +388,7 @@ templ featuredDeal(c Card, chart string, labels Labels) {
 				{ labels.Buy }
 				@icon("external")
 			</a>
-			<a class="btn btn-outline" href={ templ.SafeURL(c.URL) }>View price history</a>
+			<a class="btn btn-outline" href={ templ.SafeURL(c.URL) }>{ tr(ctx, "top.view_history") }</a>
 		</div>
 	</article>
 }
@@ -419,7 +399,7 @@ templ dealsSection(d Deals) {
 	<section class="deals" id="products">
 		<form class="deal-controls" method="get" action={ templ.SafeURL(d.Action) }>
 			<div class="view-wrap">
-				<nav class="view-switch" aria-label="View">
+				<nav class="view-switch" aria-label={ tr(ctx, "list.view") }>
 					for _, v := range d.Views {
 						if v.Current {
 							<a href={ templ.SafeURL(v.URL) } aria-current="page">{ v.Name }</a>
@@ -439,16 +419,16 @@ templ dealsSection(d Deals) {
 				}
 				<button class="btn btn-ghost" type="submit">
 					@icon("funnel")
-					Filter
+					{ tr(ctx, "list.filter") }
 				</button>
 				if d.ClearURL != "" {
-					<a class="btn btn-ghost" href={ templ.SafeURL(d.ClearURL) }>Clear filters</a>
+					<a class="btn btn-ghost" href={ templ.SafeURL(d.ClearURL) }>{ tr(ctx, "list.clear_filters") }</a>
 				}
 				if len(d.Roasters) > 0 {
-					@selectBox("roaster", "Filter by store", d.Roasters)
+					@selectBox("roaster", tr(ctx, "list.by_store"), d.Roasters)
 				}
-				@selectBox("cat", "Filter by category", d.Categories)
-				@selectBox("sort", "Sort products", d.Sorts)
+				@selectBox("cat", tr(ctx, "list.by_category"), d.Categories)
+				@selectBox("sort", tr(ctx, "list.sort"), d.Sorts)
 			</div>
 		</form>
 		if len(d.Chips) > 0 {
@@ -457,7 +437,7 @@ templ dealsSection(d Deals) {
 					<a class="filter-chip" href={ templ.SafeURL(c.URL) }>
 						{ c.Name }
 						@icon("x")
-						<span class="sr-only">remove</span>
+						<span class="sr-only">{ tr(ctx, "list.remove") }</span>
 					</a>
 				}
 			</div>
@@ -465,17 +445,17 @@ templ dealsSection(d Deals) {
 		if len(d.Cards) == 0 {
 			<div class="card empty">
 				@icon("search")
-				<h2>No products in this view</h2>
-				<p>Try clearing the filters or switching to another view.</p>
+				<h2>{ tr(ctx, "list.empty") }</h2>
+				<p>{ tr(ctx, "list.empty_hint") }</p>
 				if d.Elsewhere != nil {
 					<p><a class="link" href={ templ.SafeURL(d.Elsewhere.URL) }>{ d.Elsewhere.Name }</a></p>
 				}
 				if d.ClearURL != "" {
-					<a class="btn btn-primary" href={ templ.SafeURL(d.ClearURL) }>Clear filters</a>
+					<a class="btn btn-primary" href={ templ.SafeURL(d.ClearURL) }>{ tr(ctx, "list.clear_filters") }</a>
 				}
 			</div>
 		} else {
-			@dealList(d.Cards, d.Labels, "Products")
+			@dealList(d.Cards, d.Labels, tr(ctx, "list.products"))
 			if d.MoreURL != "" {
 				<p class="more-row">
 					<a class="btn btn-primary" href={ templ.SafeURL(d.MoreURL) }>
@@ -500,9 +480,9 @@ templ selectBox(name, label string, options []Option) {
 
 // pagerNav is the sister sites' numbered page row.
 templ pagerNav(p Pager) {
-	<nav class="pager" aria-label="Pagination">
+	<nav class="pager" aria-label={ tr(ctx, "pager.label") }>
 		if p.PrevURL != "" {
-			<a class="pager-btn" href={ templ.SafeURL(p.PrevURL) } rel="prev" aria-label="Previous page">
+			<a class="pager-btn" href={ templ.SafeURL(p.PrevURL) } rel="prev" aria-label={ tr(ctx, "pager.prev") }>
 				@icon("caret-left")
 			</a>
 		} else {
@@ -516,11 +496,11 @@ templ pagerNav(p Pager) {
 			} else if it.Current {
 				<span class="pager-btn current" aria-current="page">{ fmt.Sprint(it.N) }</span>
 			} else {
-				<a class="pager-btn" href={ templ.SafeURL(it.URL) } aria-label={ fmt.Sprintf("Page %d", it.N) }>{ fmt.Sprint(it.N) }</a>
+				<a class="pager-btn" href={ templ.SafeURL(it.URL) } aria-label={ tr(ctx, "pager.page", "n", fmt.Sprint(it.N)) }>{ fmt.Sprint(it.N) }</a>
 			}
 		}
 		if p.NextURL != "" {
-			<a class="pager-btn" href={ templ.SafeURL(p.NextURL) } rel="next" aria-label="Next page">
+			<a class="pager-btn" href={ templ.SafeURL(p.NextURL) } rel="next" aria-label={ tr(ctx, "pager.next") }>
 				@icon("caret-right")
 			</a>
 		} else {
@@ -529,7 +509,7 @@ templ pagerNav(p Pager) {
 			</span>
 		}
 	</nav>
-	<p class="pager-note">{ fmt.Sprintf("Page %d of %d · %d products", p.Page, p.Pages, p.Total) }</p>
+	<p class="pager-note">{ tr(ctx, "pager.note", "page", fmt.Sprint(p.Page), "pages", fmt.Sprint(p.Pages), "total", fmt.Sprint(p.Total)) }</p>
 }
 
 // Home is the sister sites' home page: the band, the strip, the US list,
@@ -553,44 +533,44 @@ templ MarketHome(p Page, l Listing) {
 templ faq() {
 	<section class="faq" id="faq">
 		<div class="section-center">
-			<span class="kicker">Transparency</span>
-			<h2>Frequently asked questions</h2>
+			<span class="kicker">{ tr(ctx, "common.transparency") }</span>
+			<h2>{ tr(ctx, "faq.title") }</h2>
 		</div>
 		<div class="faq-list">
 			<details class="card faq-item">
 				<summary>
-					How do you decide that a price really dropped?
+					{ tr(ctx, "faq.q1") }
 					@icon("caret-down")
 				</summary>
-				<p>We read every price once a day and keep the history. A product's usual price is the highest price it sold for on at least 7 of the last 30 days. A price under it is a real drop; if no day in the last 30 was cheaper, it's the lowest in 30 days.</p>
+				<p>{ tr(ctx, "faq.a1") }</p>
 			</details>
 			<details class="card faq-item">
 				<summary>
-					What does a Store sale badge mean?
+					{ tr(ctx, "faq.q2") }
 					@icon("caret-down")
 				</summary>
-				<p>The store shows its own crossed-out "was" price. We show it in amber and don't count it as a drop: a "was" price is the store's claim, our price history is the proof.</p>
+				<p>{ tr(ctx, "faq.a2") }</p>
 			</details>
 			<details class="card faq-item">
 				<summary>
-					Where do the prices come from?
+					{ tr(ctx, "faq.q3") }
 					@icon("caret-down")
 				</summary>
-				<p>From each roaster's and tea house's own online shop, as a buyer in the US, the UK or the EU sees them. Shipping isn't included. Check the final price on the store's site before you buy.</p>
+				<p>{ tr(ctx, "faq.a3") }</p>
 			</details>
 			<details class="card faq-item">
 				<summary>
-					Why isn't a lower price in another currency always a drop?
+					{ tr(ctx, "faq.q4") }
 					@icon("caret-down")
 				</summary>
-				<p>Some stores convert their prices for other countries. A converted price can move with the exchange rate alone, so we count it as a drop only when the store's price in its own currency dropped too.</p>
+				<p>{ tr(ctx, "faq.a4") }</p>
 			</details>
 			<details class="card faq-item">
 				<summary>
-					Do you sell coffee?
+					{ tr(ctx, "faq.q5") }
 					@icon("caret-down")
 				</summary>
-				<p>No. CoffeeProof is independent: it reads prices and links to the store. Purchases happen on the store's own site.</p>
+				<p>{ tr(ctx, "faq.a5") }</p>
 			</details>
 		</div>
 	</section>
@@ -598,16 +578,8 @@ templ faq() {
 
 templ productHero(c Coffee) {
 	<section class="wrap band-crumbs">
-		@crumbs([]NavLink{{Name: "Home", URL: "/"}, {Name: c.Section, URL: c.BackURL}, {Name: c.Roaster}})
+		@crumbs([]NavLink{{Name: tr(ctx, "nav.home"), URL: "/"}, {Name: c.Section, URL: c.BackURL}, {Name: c.Roaster}})
 	</section>
-}
-
-// sizeNoun is "250 g bag" (the label's word in lower case).
-func sizeNoun(size, word string) string {
-	if word == "" {
-		return size
-	}
-	return size + " " + lower(word)
 }
 
 func lower(s string) string {
@@ -635,16 +607,16 @@ templ CoffeePage(p Page, c Coffee) {
 					<div class="sheet-title">
 						<p class="kicker">{ c.Roaster }</p>
 						<h1>{ c.Title }</h1>
-						<p class="sheet-checked">{ "Price checked " + c.Checked + " · " + c.Section }</p>
+						<p class="sheet-checked">{ tr(ctx, "product.price_checked", "date", c.Checked, "section", c.Section) }</p>
 					</div>
 					<div class="sheet-tools">
-						<a class="icon-btn" href={ templ.SafeURL(c.WatchURL) } rel="nofollow" title="Watchlist">
+						<a class="icon-btn" href={ templ.SafeURL(c.WatchURL) } rel="nofollow" title={ tr(ctx, "nav.watchlist") }>
 							if c.Watched {
 								@icon("bookmark-fill")
-								<span class="sr-only">Remove from watchlist</span>
+								<span class="sr-only">{ tr(ctx, "product.remove_watch") }</span>
 							} else {
 								@icon("bookmark")
-								<span class="sr-only">Add to watchlist</span>
+								<span class="sr-only">{ tr(ctx, "product.add_watch") }</span>
 							}
 						</a>
 					</div>
@@ -661,19 +633,19 @@ templ CoffeePage(p Page, c Coffee) {
 					<a class="btn btn-ghost" href={ templ.SafeURL(c.WatchURL) } rel="nofollow">
 						if c.Watched {
 							@icon("bookmark-fill")
-							On your watchlist
+							{ tr(ctx, "product.on_watch") }
 						} else {
 							@icon("bookmark")
-							Add to watchlist
+							{ tr(ctx, "product.add_watch") }
 						}
 					</a>
 					<a class="btn btn-ghost" href={ templ.SafeURL(c.CompareURL) } rel="nofollow">
 						if c.Compared {
 							@icon("check")
-							Added to comparison
+							{ tr(ctx, "card.added_compare") }
 						} else {
 							@icon("scales")
-							Compare
+							{ tr(ctx, "card.compare") }
 						}
 					</a>
 					if c.Kind == "coffee" {
@@ -681,7 +653,7 @@ templ CoffeePage(p Page, c Coffee) {
 						if f.Grams > 0 {
 							<a class="btn btn-ghost" href={ templ.SafeURL(fmt.Sprintf("/calculators/cost-per-cup?price=%s&grams=%d", f.Amount, f.Grams)) }>
 								@icon("calculator")
-								Cost per cup
+								{ tr(ctx, "product.cost_per_cup") }
 							</a>
 						}
 					}
@@ -735,12 +707,12 @@ templ sizeSheet(c Coffee, i int) {
 		}
 		<div class="sheet-row">
 			<div>
-				<p class="kicker">Real price history</p>
-				<h2>Price analysis <span>{ sizeNoun(s.Size, c.Labels.Size) }</span></h2>
+				<p class="kicker">{ tr(ctx, "product.real_history") }</p>
+				<h2>{ tr(ctx, "product.analysis") } <span>{ sizeNoun(ctx, s.Size, c.Labels.Size) }</span></h2>
 			</div>
 			<div class="sheet-price">
 				<b>{ s.Price }</b>
-				<span>Current price</span>
+				<span>{ tr(ctx, "product.current") }</span>
 			</div>
 		</div>
 		if s.Big != "" {
@@ -748,49 +720,49 @@ templ sizeSheet(c Coffee, i int) {
 				@templ.Raw(s.Big)
 			</div>
 		} else {
-			<p class="nochart">History starts today; the chart fills in from tomorrow.</p>
+			<p class="nochart">{ tr(ctx, "product.no_chart") }</p>
 		}
 		<div class="sheet-stats">
-			<div><span>Period low</span><b>{ orDash(s.Low) }</b></div>
-			<div class="current"><span>Current price</span><b>{ s.Price }</b></div>
-			<div><span>Period high</span><b>{ orDash(s.High) }</b></div>
+			<div><span>{ tr(ctx, "product.period_low") }</span><b>{ orDash(s.Low) }</b></div>
+			<div class="current"><span>{ tr(ctx, "product.current") }</span><b>{ s.Price }</b></div>
+			<div><span>{ tr(ctx, "product.period_high") }</span><b>{ orDash(s.High) }</b></div>
 		</div>
 		<div class={ verdictClass(s) }>
-			<p class="verdict-title">{ verdictTitle(s) }</p>
+			<p class="verdict-title">{ verdictTitle(ctx, s) }</p>
 			<p>{ s.Reading }</p>
 		</div>
-		<h3>What we measured about this product</h3>
+		<h3>{ tr(ctx, "product.measured") }</h3>
 		<dl class="measured">
 			<div>
-				<dt>Usual price we measured</dt>
+				<dt>{ tr(ctx, "product.usual") }</dt>
 				if s.Usual != "" {
-					<dd>{ s.Usual } <span>the highest price on at least 7 of the last 30 days</span></dd>
+					<dd>{ s.Usual } <span>{ tr(ctx, "product.usual_rule") }</span></dd>
 				} else {
-					<dd>Not enough history yet</dd>
+					<dd>{ tr(ctx, "product.not_enough") }</dd>
 				}
 			</div>
-			<div><dt>Since tracking started</dt><dd>{ orDash(s.Since) }</dd></div>
-			<div><dt>Lowest in the last 30 days</dt><dd>{ orDash(s.Low30) }</dd></div>
+			<div><dt>{ tr(ctx, "product.since") }</dt><dd>{ orDash(s.Since) }</dd></div>
+			<div><dt>{ tr(ctx, "product.low30") }</dt><dd>{ orDash(s.Low30) }</dd></div>
 			if s.Against != "" {
-				<div><dt>Against the usual price</dt><dd>{ s.Against } <span>{ s.AgainstNote }</span></dd></div>
+				<div><dt>{ tr(ctx, "product.against") }</dt><dd>{ s.Against } <span>{ s.AgainstNote }</span></dd></div>
 			}
 			<div>
-				<dt>What the store shows</dt>
+				<dt>{ tr(ctx, "product.store_shows") }</dt>
 				if s.StoreWas != "" {
-					<dd>Was { s.StoreWas } <span>the store's claim, not our measurement</span></dd>
+					<dd>{ tr(ctx, "product.was", "price", s.StoreWas) } <span>{ tr(ctx, "product.store_claim") }</span></dd>
 				} else {
-					<dd>No sale price</dd>
+					<dd>{ tr(ctx, "product.no_sale") }</dd>
 				}
 			</div>
 			if s.PerUnit != "" {
 				<div><dt>{ c.Labels.Unit }</dt><dd>{ s.PerUnit }</dd></div>
 			}
 			<div>
-				<dt>Stock</dt>
+				<dt>{ tr(ctx, "product.stock") }</dt>
 				if s.Available {
-					<dd>In stock at our last check</dd>
+					<dd>{ tr(ctx, "product.in_stock") }</dd>
 				} else {
-					<dd>Out of stock at our last check. We keep tracking its price.</dd>
+					<dd>{ tr(ctx, "product.out_of_stock") }</dd>
 				}
 			</div>
 		</dl>
@@ -798,15 +770,15 @@ templ sizeSheet(c Coffee, i int) {
 			{ c.Labels.Buy }
 			@icon("external")
 		</a>
-		<p class="sheet-note">{ "Checked " + c.Checked + ". " + c.Labels.StoreNote + " shows the final price." }</p>
+		<p class="sheet-note">{ tr(ctx, "product.sheet_note", "date", c.Checked, "store_note", c.Labels.StoreNote) }</p>
 	</section>
 }
 
 templ notFoundHero() {
 	<section class="wrap hero-grid">
 		<div class="hero-text">
-			<h1>Page not found</h1>
-			<p class="lede">This page doesn't exist, or the store stopped selling it.</p>
+			<h1>{ tr(ctx, "notfound.title") }</h1>
+			<p class="lede">{ tr(ctx, "notfound.lede") }</p>
 		</div>
 	</section>
 }
@@ -815,9 +787,9 @@ templ NotFound(p Page, homeURL string) {
 	@Layout(p, notFoundHero()) {
 		<div class="card empty">
 			@icon("warning")
-			<h2>Nothing here</h2>
-			<p>Try the search above, or start from today's deals.</p>
-			<a class="btn btn-primary" href={ templ.SafeURL(homeURL) }>Back to the home page</a>
+			<h2>{ tr(ctx, "notfound.nothing") }</h2>
+			<p>{ tr(ctx, "notfound.hint") }</p>
+			<a class="btn btn-primary" href={ templ.SafeURL(homeURL) }>{ tr(ctx, "notfound.home") }</a>
 		</div>
 	}
 }

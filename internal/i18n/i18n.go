@@ -9,11 +9,27 @@
 package i18n
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+type langKey struct{}
+
+// WithLang is ctx carrying the language a page renders in.
+func WithLang(ctx context.Context, lang string) context.Context {
+	return context.WithValue(ctx, langKey{}, lang)
+}
+
+// Lang is the language ctx carries, English when none.
+func Lang(ctx context.Context) string {
+	if lang, ok := ctx.Value(langKey{}).(string); ok && lang != "" {
+		return lang
+	}
+	return Source
+}
 
 // Source is the language every text is written in first. A text missing in
 // another language falls back to it.

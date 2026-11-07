@@ -99,7 +99,7 @@ func (s *Server) Handler() http.Handler {
 	// sister sites' monitor once stayed red because their endpoint didn't).
 	mux.HandleFunc("GET /api/health/sources", s.health)
 	mux.HandleFunc("/", s.notFound)
-	return s.withVisitor(mux)
+	return s.withVisitor(withLang(mux))
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
@@ -114,8 +114,10 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	// The home page is every market's x-default: searchers outside the listed
 	// regions land here and pick theirs in the header.
 	for _, mk := range market.All {
-		for _, h := range mk.Hreflangs {
-			p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + "/" + mk.Code + "/"})
+		for _, v := range mk.Versions() {
+			for _, h := range v.Hreflangs {
+				p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + "/" + v.Code + "/"})
+			}
 		}
 		p.Regions = append(p.Regions, views.NavLink{Name: mk.Short, URL: "/" + mk.Code + "/", Current: mk.Key == m.Key})
 	}
@@ -155,25 +157,49 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 const homeSize = 24
 
 // inMarkets fills in what every page of a market shares: hreflang
-// alternates to the same page in the markets where it exists (paths, by
-// market code), region links (to the same page where it exists, otherwise
-// to that market's listing of the section) and the market's note. xDefault
-// is a path, or "" for none.
+// alternates to the same page in the markets and languages where it exists
+// (paths, by market key, at each market's English address), region links (to
+// the same page where it exists, otherwise to that market's listing of the
+// section), the page in the market's other languages and the market's note.
+// xDefault is a path, or "" for none.
 func (s *Server) inMarkets(p views.Page, current market.Market, k kind, paths map[string]string, xDefault string) views.Page {
+	// The page's own entry may be at its language's address: keep English.
+	if own, ok := paths[current.Key]; ok {
+		if rest, ok := strings.CutPrefix(own, "/"+current.Code+"/"); ok {
+			paths[current.Key] = "/" + current.Key + "/" + rest
+		}
+	}
 	for _, m := range market.All {
 		path, ok := paths[m.Key]
 		if ok {
-			for _, h := range m.Hreflangs {
-				p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + path})
+			for _, v := range m.Versions() {
+				for _, h := range v.Hreflangs {
+					p.Alternates = append(p.Alternates, views.Alternate{Lang: h, URL: s.SiteURL + v.Localize(path)})
+				}
 			}
 		} else {
 			path = "/" + m.Code + "/" + k.listPath
+		}
+		if m.Key == current.Key {
+			path = current.Localize(path)
 		}
 		p.Regions = append(p.Regions, views.NavLink{Name: m.Short, URL: path, Current: m.Key == current.Key})
 	}
 	if xDefault != "" {
 		p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + xDefault})
 	}
+	if versions := current.Versions(); len(versions) > 1 {
+		own, ok := paths[current.Key]
+		if !ok {
+			own = "/" + current.Key + "/" + k.listPath
+		}
+		for _, v := range versions {
+			lang := v.Language()
+			p.Languages = append(p.Languages, views.LangLink{Lang: lang, Name: i18n.T(lang, "lang.name"),
+				URL: v.Localize(own), Current: v.Code == current.Code})
+		}
+	}
+	p.MarketBase = "/" + current.Code + "/"
 	p.MarketNote = current.Note
 	return p
 }
@@ -184,54 +210,56 @@ type kind struct {
 	name       string // roasters.kind
 	segment    string // product pages live at /{market}/{segment}/{slug}
 	listPath   string // the listing under the market URL: "" or "tea/"
-	nav        string
 	icon       string // the category strip's icon
-	title      string // listing <title>, %s = market name
-	heading    string // listing <h1>, %s = market name
-	lede       string // %d = number of products in stock
-	desc       string // %d = number of products in stock
 	perUnit    func(lang string, priceMinor int64, grams int32, currency string) string
-	labels     views.Labels
 	categories []category
 }
 
 var (
 	coffeeKind = kind{
-		name: "coffee", segment: "coffee", listPath: "", nav: "Coffee", icon: "cup",
-		title: "Specialty coffee prices in the %s", heading: "Coffee prices in the %s",
-		lede:    "%d coffees from independent roasters, with the price each one shows today.",
-		desc:    "%d coffees from independent roasters with today's price and price history.",
-		perUnit: perKilo,
-		labels: views.Labels{Back: "All coffees", Maker: "Roasted by", Size: "Bag", Unit: "Per kg", Buy: "Go to roaster",
-			StoreNote: "The roaster's own shop"},
+		name: "coffee", segment: "coffee", listPath: "", icon: "cup",
+		perUnit:    perKilo,
 		categories: coffeeCategories,
 	}
 	// Tea is priced per 100 g: tea is bought in 25-250 g packs, and a per-kg
 	// figure would read as a price nobody pays.
 	teaKind = kind{
-		name: "tea", segment: "tea", listPath: "tea/", nav: "Tea", icon: "leaf",
-		title: "Specialty tea prices in the %s", heading: "Tea prices in the %s",
-		lede:    "%d teas from specialist tea houses, with the price each one shows today.",
-		desc:    "%d teas from specialist tea houses with today's price and price history.",
-		perUnit: perHundredGrams,
-		labels: views.Labels{Back: "All teas", Maker: "Sold by", Size: "Size", Unit: "Per 100 g", Buy: "Go to store",
-			StoreNote: "The tea house's own shop"},
+		name: "tea", segment: "tea", listPath: "tea/", icon: "leaf",
+		perUnit:    perHundredGrams,
 		categories: teaCategories,
 	}
 	kinds = []kind{coffeeKind, teaKind}
 )
+
+// text is one of the kind's words in lang, from the catalog's kind.<name>.*
+// entries: its menu name, list headings, product page labels.
+func (k kind) text(lang, field string, pairs ...string) string {
+	return i18n.T(lang, "kind."+k.name+"."+field, pairs...)
+}
+
+// count is a counted text of the kind: "12 coffees tracked".
+func (k kind) count(lang, field string, n int64, pairs ...string) string {
+	return i18n.N(lang, "kind."+k.name+"."+field, n, pairs...)
+}
+
+// labels are the product page's words for the kind in lang.
+func (k kind) labels(lang string) views.Labels {
+	return views.Labels{Back: k.text(lang, "back"), Maker: k.text(lang, "maker"), Size: k.text(lang, "size"),
+		Unit: k.text(lang, "unit"), Buy: k.text(lang, "buy"), StoreNote: k.text(lang, "store_note")}
+}
 
 // nav is the header's menu in a market, as on the sister sites: the
 // sections, the stores, the quiz, the calculators and the guides, marking
 // the current one by name ("coffee", "tea", "brands", "quiz", "calculators",
 // "guides").
 func nav(m market.Market, current string) []views.NavLink {
+	lang := m.Language()
 	links := kindLinks(m, current)
 	links = append(links,
-		views.NavLink{Name: "Brands", URL: "/" + m.Code + "/brands/", Current: current == "brands"},
-		views.NavLink{Name: "Which coffee?", URL: "/which-coffee", Current: current == "quiz"},
-		views.NavLink{Name: "Calculators", URL: "/calculators/", Current: current == "calculators"},
-		views.NavLink{Name: "Guides", URL: "/guides/", Current: current == "guides"})
+		views.NavLink{Name: i18n.T(lang, "nav.brands"), URL: "/" + m.Code + "/brands/", Current: current == "brands", Icon: "store"},
+		views.NavLink{Name: i18n.T(lang, "nav.which_coffee"), URL: "/which-coffee", Current: current == "quiz"},
+		views.NavLink{Name: i18n.T(lang, "nav.calculators"), URL: "/calculators/", Current: current == "calculators"},
+		views.NavLink{Name: i18n.T(lang, "nav.guides"), URL: "/guides/", Current: current == "guides", Icon: "book"})
 	return links
 }
 
@@ -239,7 +267,7 @@ func nav(m market.Market, current string) []views.NavLink {
 func kindLinks(m market.Market, current string) []views.NavLink {
 	links := make([]views.NavLink, 0, len(kinds))
 	for _, k := range kinds {
-		links = append(links, views.NavLink{Name: k.nav, URL: "/" + m.Code + "/" + k.listPath, Current: k.name == current})
+		links = append(links, views.NavLink{Name: k.text(m.Language(), "nav"), URL: "/" + m.Code + "/" + k.listPath, Current: k.name == current, Icon: k.icon})
 	}
 	return links
 }
@@ -287,16 +315,16 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		return
 	}
 	cat, _ := k.category(st.cat)
-	heading := fmt.Sprintf(k.heading, m.Name)
+	heading := k.text(lang, "heading", "in_market", inMarket(lang, m))
 	if st.cat != "" {
-		heading = fmt.Sprintf("%s prices in the %s", cat.noun, m.Name)
+		heading = i18n.T(lang, "listing.cat_heading", "noun", cat.noun(lang), "in_market", inMarket(lang, m))
 	}
 	title := heading
 	if st.cat == "" {
-		title = fmt.Sprintf(k.title, m.Name)
+		title = k.text(lang, "title", "in_market", inMarket(lang, m))
 	}
 	if st.page > 1 {
-		title = fmt.Sprintf("%s, page %d", title, st.page)
+		title = i18n.T(lang, "listing.page_title", "title", title, "n", fmt.Sprint(st.page))
 	}
 	// A category alone is a page of its own, with its own canonical; any
 	// other filter, order or search repeats the plain list's products and
@@ -305,7 +333,7 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 	onlyCat := st.cat != "" && st.show == "" && st.roaster == "" && st.sort == "" && st.q == ""
 	p := views.Page{
 		Title: title + " — CoffeeProof", Lang: m.Lang,
-		Description: fmt.Sprintf(k.desc, st.total),
+		Description: k.text(lang, "desc", "n", fmt.Sprint(st.total)),
 		Canonical:   s.SiteURL + st.pageURL(st.page),
 		NoIndex:     st.filtered() && !onlyCat,
 		Nav:         nav(m, k.name),
@@ -333,13 +361,13 @@ func (s *Server) listPage(w http.ResponseWriter, r *http.Request, k kind) {
 		s.fail(w, r, err)
 		return
 	}
-	h.Crumbs = []views.NavLink{{Name: "Home", URL: "/"}, {Name: m.Short, URL: "/" + m.Code + "/"}, {Name: k.nav, URL: base}}
+	h.Crumbs = []views.NavLink{{Name: i18n.T(lang, "nav.home"), URL: "/"}, {Name: m.Short, URL: "/" + m.Code + "/"}, {Name: k.text(lang, "nav"), URL: base}}
 	if st.cat != "" {
-		h.Crumbs = append(h.Crumbs, views.NavLink{Name: cat.label, URL: base + "?cat=" + cat.slug})
+		h.Crumbs = append(h.Crumbs, views.NavLink{Name: cat.label(lang), URL: base + "?cat=" + cat.slug})
 	}
 	h.Heading = heading
-	h.Lede = fmt.Sprintf(k.lede, st.total)
-	h.Currency = "Prices in " + currencyName(lang, m.Currency)
+	h.Lede = k.text(lang, "lede", "n", fmt.Sprint(st.total))
+	h.Currency = i18n.T(lang, "hero.prices_in", "currency", currencyName(lang, m.Currency))
 	p.Strip = strip(m, k, st.cat)
 	p = chrome(r, p, base)
 	s.render(w, r, http.StatusOK, views.MarketHome(p, views.Listing{Hero: h, Deals: st.deals}))
@@ -372,7 +400,7 @@ func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.L
 			PerUnit:   k.perUnit(lang, c.PriceMinor, c.WeightGrams, c.Currency),
 			BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
 			Chart:     sparkArea(history[c.OfferID], now, 180, 48, c.Title+" price history"),
-			StoreNote: k.labels.StoreNote,
+			StoreNote: k.text(lang, "store_note"),
 			Ref:       m.Key + "/" + k.segment + "/" + c.Slug,
 		}
 		card.Watched, card.Compared = watched[card.Ref], slices.Contains(compared, card.Ref)
@@ -550,7 +578,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		}
 	}
 	view := views.Coffee{Title: c.Title, Roaster: c.RoasterName, RoasterURL: c.RoasterUrl,
-		BackURL: "/" + m.Code + "/" + k.listPath, Labels: k.labels, Section: m.Short + " " + k.name,
+		BackURL: "/" + m.Code + "/" + k.listPath, Labels: k.labels(lang), Section: k.text(lang, "section", "market", m.Short),
 		Checked: i18n.Day(lang, seen)}
 	if c.ImageUrl != nil {
 		view.ImageURL = cdnImage(*c.ImageUrl, 960)
@@ -601,27 +629,28 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 			switch diff := o.PriceMinor - o.Usual; {
 			case diff < 0:
 				ov.Against = "\u2212" + money(lang, -diff, o.Currency)
-				ov.AgainstNote = fmt.Sprintf("%.1f%% lower", float64(-diff)*100/float64(o.Usual))
+				pct := i18n.Fixed(lang, float64(-diff)*100/float64(o.Usual), 1)
+				ov.AgainstNote = i18n.T(lang, "product.lower", "pct", pct)
 				switch {
 				case !sum.RateOnly():
 					ov.Lower = true
 				case sum.OwnPrice == pricing.OwnNoDrop:
-					ov.AgainstNote += ", exchange rate"
-					ov.RateNote = "Exchange rate, not a price cut"
+					ov.AgainstNote = i18n.T(lang, "product.lower_rate", "pct", pct)
+					ov.RateNote = i18n.T(lang, "product.rate_note.no_drop")
 				default:
-					ov.AgainstNote += ", not confirmed"
-					ov.RateNote = "Can't confirm a price cut"
+					ov.AgainstNote = i18n.T(lang, "product.lower_unconfirmed", "pct", pct)
+					ov.RateNote = i18n.T(lang, "product.rate_note.unknown")
 				}
 			case diff > 0:
 				ov.Against, ov.AgainstNote = "+"+money(lang, diff, o.Currency),
-					fmt.Sprintf("%.1f%% higher", float64(diff)*100/float64(o.Usual))
+					i18n.T(lang, "product.higher", "pct", i18n.Fixed(lang, float64(diff)*100/float64(o.Usual), 1))
 			default:
-				ov.Against, ov.AgainstNote = "Same", "As usual"
+				ov.Against, ov.AgainstNote = i18n.T(lang, "product.same"), i18n.T(lang, "product.as_usual")
 			}
 		}
 		if pts := history[o.ID]; len(pts) > 0 {
 			ov.Big = historyChart(lang, pts, now, o.Usual, o.Currency,
-				fmt.Sprintf("%s price since %s", o.SizeLabel, i18n.Date(lang, pts[0].At)), ov.Anchor)
+				i18n.T(lang, "chart.since", "size", o.SizeLabel, "date", i18n.Date(lang, pts[0].At)), ov.Anchor)
 			ov.Since = i18n.Date(lang, pts[0].At)
 			// Wide and flat, like a roast curve: the page's CSS scales it to
 			// the column, the viewBox keeps the proportions.
@@ -656,8 +685,8 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 	}
 	url := s.SiteURL + "/" + m.Code + "/" + k.segment + "/" + c.Slug
 	p := views.Page{
-		Title: c.Title + " by " + c.RoasterName + " — price history — CoffeeProof", Lang: m.Lang,
-		Description: fmt.Sprintf("%s by %s: today's price for every size and whether it is a real price drop.", c.Title, c.RoasterName),
+		Title: i18n.T(lang, "product.title", "title", c.Title, "roaster", c.RoasterName), Lang: m.Lang,
+		Description: i18n.T(lang, "product.desc", "title", c.Title, "roaster", c.RoasterName),
 		Canonical:   url,
 		JSONLD:      string(ldJSON),
 		NoIndex:     !inStockRecently,
@@ -723,33 +752,36 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 		segment[k.name] = k.segment
 	}
 	for _, m := range market.All {
-		for _, k := range kinds {
-			fmt.Fprintf(&b, "<url><loc>%s/%s/%s</loc></url>\n", s.SiteURL, m.Code, k.listPath)
-		}
-		fmt.Fprintf(&b, "<url><loc>%s/%s/brands/</loc></url>\n", s.SiteURL, m.Code)
-		fmt.Fprintf(&b, "<url><loc>%s/%s/categories/</loc></url>\n", s.SiteURL, m.Code)
-		// A category alone is a page of its own (see listPage).
-		for _, k := range kinds {
-			for _, c := range k.categories {
-				fmt.Fprintf(&b, "<url><loc>%s/%s/%s?cat=%s</loc></url>\n", s.SiteURL, m.Code, k.listPath, c.slug)
-			}
-		}
 		brands, err := s.Q.ListBrands(r.Context(), m.Key)
 		if err != nil {
 			s.fail(w, r, err)
 			return
-		}
-		for _, br := range brands {
-			fmt.Fprintf(&b, "<url><loc>%s/%s/brands/%s</loc></url>\n", s.SiteURL, m.Code, br.Slug)
 		}
 		rows, err := s.Q.SitemapCoffees(r.Context(), m.Key)
 		if err != nil {
 			s.fail(w, r, err)
 			return
 		}
-		for _, c := range rows {
-			fmt.Fprintf(&b, "<url><loc>%s/%s/%s/%s</loc><lastmod>%s</lastmod></url>\n",
-				s.SiteURL, m.Code, segment[c.Kind], c.Slug, c.LastSeen.Time.UTC().Format("2006-01-02"))
+		// Every language version of a market has all of its pages.
+		for _, v := range m.Versions() {
+			for _, k := range kinds {
+				fmt.Fprintf(&b, "<url><loc>%s/%s/%s</loc></url>\n", s.SiteURL, v.Code, k.listPath)
+			}
+			fmt.Fprintf(&b, "<url><loc>%s/%s/brands/</loc></url>\n", s.SiteURL, v.Code)
+			fmt.Fprintf(&b, "<url><loc>%s/%s/categories/</loc></url>\n", s.SiteURL, v.Code)
+			// A category alone is a page of its own (see listPage).
+			for _, k := range kinds {
+				for _, c := range k.categories {
+					fmt.Fprintf(&b, "<url><loc>%s/%s/%s?cat=%s</loc></url>\n", s.SiteURL, v.Code, k.listPath, c.slug)
+				}
+			}
+			for _, br := range brands {
+				fmt.Fprintf(&b, "<url><loc>%s/%s/brands/%s</loc></url>\n", s.SiteURL, v.Code, br.Slug)
+			}
+			for _, c := range rows {
+				fmt.Fprintf(&b, "<url><loc>%s/%s/%s/%s</loc><lastmod>%s</lastmod></url>\n",
+					s.SiteURL, v.Code, segment[c.Kind], c.Slug, c.LastSeen.Time.UTC().Format("2006-01-02"))
+			}
 		}
 	}
 	pages := []string{"/guides/", "/guides/coffee-and-health", "/guides/coffee-history", "/calculators/",
@@ -811,8 +843,20 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
-	p := chrome(r, views.Page{Title: "Page not found — CoffeeProof", Lang: "en", NoIndex: true, Nav: nav(market.US, "")}, "/en-us/")
-	s.render(w, r, http.StatusNotFound, views.NotFound(p, "/"))
+	// Under a language version's address the page speaks that language and
+	// leads back into that version; anywhere else it is the US English one.
+	m, home := market.US, "/"
+	seg, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	if v, ok := market.ByCode(seg); ok && v.Language() != i18n.Source {
+		m, home = v, "/"+v.Code+"/"
+	}
+	p := views.Page{Title: i18n.T(m.Language(), "notfound.page_title"), Lang: m.Lang, NoIndex: true, Nav: nav(m, ""),
+		MarketBase: home}
+	if home == "/" {
+		p.MarketBase, p.Lang = "", "en"
+	}
+	p = chrome(r, p, "/"+m.Code+"/")
+	s.render(w, r, http.StatusNotFound, views.NotFound(p, home))
 }
 
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
@@ -839,4 +883,22 @@ func cacheFor(d time.Duration, h http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(d.Seconds())))
 		h.ServeHTTP(w, r)
 	})
+}
+
+// withLang renders a market's pages in the language their address names
+// (/de-eu/…); every other page is English.
+func withLang(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seg, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if m, ok := market.ByCode(seg); ok && m.Language() != i18n.Source {
+			r = r.WithContext(i18n.WithLang(r.Context(), m.Language()))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// inMarket is "in the European Union" as lang says it, for the headings and
+// titles that name the market.
+func inMarket(lang string, m market.Market) string {
+	return i18n.T(lang, "market."+m.Region()+".in")
 }

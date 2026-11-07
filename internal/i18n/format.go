@@ -15,6 +15,9 @@ type style struct {
 	minGroup int
 	// symbolAfter puts the currency after the number: "12,50 €".
 	symbolAfter bool
+	// plainMoney writes prices without a group separator: English keeps the
+	// site's first format ("$1234.50") while its counts read "2,956 teas".
+	plainMoney bool
 	// symbolSpace goes between a currency symbol and the number, codeSpace
 	// between a currency code and the number ("SEK 12.50").
 	symbolSpace, codeSpace string
@@ -27,8 +30,7 @@ type style struct {
 const nbsp = " "
 
 var styles = map[string]style{
-	// English keeps the site's first format, without a group separator.
-	"en": {decimal: ".", codeSpace: " ",
+	"en": {decimal: ".", group: ",", minGroup: 1, plainMoney: true, codeSpace: " ",
 		months: [12]string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},
 		day:    "{m} {d}", date: "{m} {d}, {y}", dayTime: "{m} {d}, {t}"},
 	"de": {decimal: ",", group: ".", minGroup: 1, symbolAfter: true, symbolSpace: nbsp, codeSpace: nbsp,
@@ -62,10 +64,16 @@ func styleOf(lang string) style {
 	return styles[Source]
 }
 
-// Number writes a whole number: 12345 is "12345" in English (the site's
-// first format) and "12.345" in German.
+// Number writes a whole number: 12345 is "12,345" in English and "12.345"
+// in German.
 func Number(lang string, n int64) string {
 	return styleOf(lang).number(n)
+}
+
+// Fixed writes f with places decimals: 12.5 is "12.5" in English, "12,5" in
+// German.
+func Fixed(lang string, f float64, places int) string {
+	return strings.Replace(strconv.FormatFloat(f, 'f', places, 64), ".", styleOf(lang).decimal, 1)
 }
 
 func (st style) number(n int64) string {
@@ -96,7 +104,11 @@ var symbols = map[string]string{"USD": "$", "GBP": "£", "EUR": "€", "TRY": "�
 // Prices are never negative; a caller showing a difference writes the sign.
 func Money(lang string, minor int64, currency string) string {
 	st := styleOf(lang)
-	num := st.number(minor/100) + st.decimal + fmt.Sprintf("%02d", minor%100)
+	whole := st
+	if st.plainMoney {
+		whole.group = ""
+	}
+	num := whole.number(minor/100) + st.decimal + fmt.Sprintf("%02d", minor%100)
 	sym, space := symbols[currency], st.symbolSpace
 	if sym == "" {
 		sym, space = currency, st.codeSpace

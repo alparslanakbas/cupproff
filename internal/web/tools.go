@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/alparslanakbas/cupproof/internal/db"
+	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
 	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
@@ -21,6 +22,7 @@ import (
 // categoriesPage lists a market's categories with what each has in stock.
 func (s *Server) categoriesPage(w http.ResponseWriter, r *http.Request) {
 	m, ok := market.ByCode(r.PathValue("market"))
+	lang := m.Language()
 	if !ok {
 		s.notFound(w, r)
 		return
@@ -33,21 +35,21 @@ func (s *Server) categoriesPage(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, err)
 			return
 		}
-		g := views.CategoryGroup{Name: k.nav, URL: base, Icon: k.icon, Count: views.Amount(total, k.name+" in stock", k.name+"s in stock")}
+		g := views.CategoryGroup{Name: k.text(lang, "nav"), All: k.text(lang, "all_link"), URL: base, Icon: k.icon, Count: k.count(lang, "in_stock", total)}
 		for _, c := range k.categories {
 			n, err := s.Q.CountCoffees(r.Context(), db.CountCoffeesParams{Market: m.Key, Kind: k.name, Title: c.include, TitleNot: c.exclude})
 			if err != nil {
 				s.fail(w, r, err)
 				return
 			}
-			g.Items = append(g.Items, views.CategoryCard{Label: c.label, URL: base + "?cat=" + c.slug, Icon: c.icon,
-				Count: fmt.Sprintf("%d in stock today", n), About: categoryAbout[c.slug]})
+			g.Items = append(g.Items, views.CategoryCard{Label: c.label(lang), URL: base + "?cat=" + c.slug, Icon: c.icon,
+				Count: i18n.T(lang, "cat.in_stock_today", "n", fmt.Sprint(n)), About: c.about(lang)})
 		}
 		groups = append(groups, g)
 	}
 	p := views.Page{
-		Title:       fmt.Sprintf("Coffee and tea categories in the %s — CoffeeProof", m.Name),
-		Description: fmt.Sprintf("Single origins, blends, espresso, decaf and every kind of tea from independent stores in the %s, with today's prices.", m.Name),
+		Title:       i18n.T(lang, "categories.title", "in_market", inMarket(lang, m)),
+		Description: i18n.T(lang, "categories.desc", "in_market", inMarket(lang, m)),
 		Lang:        m.Lang, Canonical: s.SiteURL + "/" + m.Code + "/categories/", Nav: nav(m, ""),
 	}
 	paths := map[string]string{}
@@ -57,23 +59,6 @@ func (s *Server) categoriesPage(w http.ResponseWriter, r *http.Request) {
 	p = s.inMarkets(p, m, coffeeKind, paths, "")
 	p = chrome(r, p, "/"+m.Code+"/")
 	s.render(w, r, http.StatusOK, views.Categories(p, m.Short, groups))
-}
-
-// categoryAbout is a category card's line: what the category holds, in the
-// words of how we sort products into it (by name).
-var categoryAbout = map[string]string{
-	"single-origin": "Coffees named after the country or region they grew in.",
-	"blends":        "Coffees the roaster sells as a blend.",
-	"espresso":      "Coffees the roaster names for espresso.",
-	"decaf":         "Coffees with most of their caffeine removed.",
-	"black":         "Fully oxidised teas: Assam, Darjeeling, Ceylon, Earl Grey and breakfast teas.",
-	"green":         "Unoxidised teas such as sencha, gyokuro and dragon well.",
-	"oolong":        "Partly oxidised teas, between green and black.",
-	"white":         "Buds and young leaves, lightly processed: silver needle, white peony.",
-	"pu-erh":        "Teas from Yunnan, often pressed into cakes and aged.",
-	"matcha":        "Powdered green tea, whisked into water.",
-	"chai":          "Spiced teas and the spice blends for them.",
-	"herbal":        "Infusions of herbs, flowers and roots, such as rooibos and chamomile; not from the tea plant.",
 }
 
 // calculatorList is the calculators page, in its order.
@@ -254,7 +239,7 @@ func (s *Server) whichCoffee(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, err)
 			return
 		}
-		quiz.Result = &views.QuizResult{Title: a.title, Why: a.why, Cards: st.cards, Labels: a.kind.labels,
+		quiz.Result = &views.QuizResult{Title: a.title, Why: a.why, Cards: st.cards, Labels: a.kind.labels(i18n.Source),
 			URL: base + "?cat=" + a.cat, Count: st.total}
 		for _, other := range market.All {
 			quiz.Result.Markets = append(quiz.Result.Markets, views.NavLink{Name: other.Short,
@@ -304,7 +289,7 @@ func (s *Server) blackFriday(w http.ResponseWriter, r *http.Request) {
 			if show == "sales" {
 				title = "Store sales in US " + k.name
 			}
-			lists = append(lists, views.DealsBlock{Title: title, Cards: st.cards, Labels: k.labels,
+			lists = append(lists, views.DealsBlock{Title: title, Cards: st.cards, Labels: k.labels(i18n.Source),
 				URL: base + "?show=" + show, Count: st.total, Show: show})
 		}
 	}
@@ -329,5 +314,5 @@ func (s *Server) cheapest(w http.ResponseWriter, r *http.Request) {
 		Canonical:   s.SiteURL + "/cheapest-coffee", Nav: nav(m, "")}
 	p = chrome(r, p, base)
 	s.render(w, r, http.StatusOK, views.Cheapest(p, views.DealsBlock{Title: "Cheapest per kg", Cards: st.cards,
-		Labels: coffeeKind.labels, URL: base + "?sort=unit_asc", Count: st.total}))
+		Labels: coffeeKind.labels(i18n.Source), URL: base + "?sort=unit_asc", Count: st.total}))
 }
