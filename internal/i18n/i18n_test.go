@@ -136,6 +136,8 @@ func TestFormats(t *testing.T) {
 		{"es", Money("es", 1234500, "EUR"), "12.345,00 €"},
 		{"pt", Date("pt", day), "2 de nov. de 2026"},
 		{"nl", Money("nl", 1925, "EUR"), "€ 19,25"},
+		{"it", Money("it", 123456, "EUR"), "1.234,56 €"},
+		{"it", Date("it", day), "2 nov 2026"},
 		{"tr", Money("tr", 125000, "TRY"), "₺1.250,00"},
 		{"tr", Date("tr", day), "2 Kas 2026"},
 		{"xx", Money("xx", 1925, "USD"), "$19.25"},

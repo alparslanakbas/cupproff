@@ -57,8 +57,17 @@ var EU = Market{Key: "en-eu", Code: "en-eu", Lang: "en", Country: "DE", Currency
 		"en-FI", "en-EE", "en-LV", "en-LT", "en-SK", "en-SI", "en-GR", "en-CY", "en-MT", "en-HR", "en-BG"},
 	Note: "Prices are the ones each store shows a buyer in Germany; with VAT they can differ in other EU countries.",
 	Hint: "Prices as shown in Germany",
-	// German first: 9 of the 27 EU stores are German (6 Nov 2026).
-	Variants: []Variant{{Lang: "de", Hreflangs: []string{"de-DE", "de-AT", "de-BE", "de-LU"}}}}
+	// German first: 9 of the 27 EU stores are German (6 Nov 2026). French,
+	// Spanish, Italian, Portuguese and Dutch followed on 7 Nov 2026. Each
+	// lists only the euro-area countries where it is spoken.
+	Variants: []Variant{
+		{Lang: "de", Hreflangs: []string{"de-DE", "de-AT", "de-BE", "de-LU"}},
+		{Lang: "fr", Hreflangs: []string{"fr-FR", "fr-BE", "fr-LU"}},
+		{Lang: "es", Hreflangs: []string{"es-ES"}},
+		{Lang: "it", Hreflangs: []string{"it-IT"}},
+		{Lang: "pt", Hreflangs: []string{"pt-PT"}},
+		{Lang: "nl", Hreflangs: []string{"nl-NL", "nl-BE"}},
+	}}
 
 // All lists the live markets, in the order the region selector shows them.
 var All = []Market{US, UK, EU}
@@ -113,11 +122,14 @@ func (m Market) Region() string {
 }
 
 // In is the market's pages in v's language: their own address, language
-// and hreflangs, and the market's name and notes from the catalog.
+// and hreflangs, and the market's name, short name and notes from the
+// catalog. The short name goes into sentences ("Café · UE"), where the
+// English "EU" would read as a foreign word in French.
 func (m Market) In(v Variant) Market {
 	region := m.Region()
 	m.Code, m.Lang, m.Hreflangs = v.Lang+"-"+region, v.Lang, v.Hreflangs
 	m.Name = i18n.T(v.Lang, "market."+region+".name")
+	m.Short = i18n.T(v.Lang, "market."+region+".short")
 	if m.Note != "" {
 		m.Note = i18n.T(v.Lang, "market."+region+".note")
 		m.Hint = i18n.T(v.Lang, "market."+region+".hint")

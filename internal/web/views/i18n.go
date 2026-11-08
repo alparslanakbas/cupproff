@@ -143,4 +143,12 @@ var flags = map[string]string{
 		`<path stroke="#fff" stroke-width="10" d="M30 0v30M0 15h60"/><path stroke="#C8102E" stroke-width="6" d="M30 0v30M0 15h60"/></svg>`,
 	"de": `<svg ` + flagAttrs + ` viewBox="0 0 5 3"><path fill="#000" d="M0 0h5v1H0z"/><path fill="#D00" d="M0 1h5v1H0z"/>` +
 		`<path fill="#FFCE00" d="M0 2h5v1H0z"/></svg>`,
+	"fr": `<svg ` + flagAttrs + ` viewBox="0 0 3 2"><path fill="#002395" d="M0 0h1v2H0z"/><path fill="#fff" d="M1 0h1v2H1z"/>` +
+		`<path fill="#ED2939" d="M2 0h1v2H2z"/></svg>`,
+	"es": `<svg ` + flagAttrs + ` viewBox="0 0 3 4"><path fill="#AA151B" d="M0 0h3v4H0z"/><path fill="#F1BF00" d="M0 1h3v2H0z"/></svg>`,
+	"it": `<svg ` + flagAttrs + ` viewBox="0 0 3 2"><path fill="#009246" d="M0 0h1v2H0z"/><path fill="#fff" d="M1 0h1v2H1z"/>` +
+		`<path fill="#CE2B37" d="M2 0h1v2H2z"/></svg>`,
+	"pt": `<svg ` + flagAttrs + ` viewBox="0 0 5 3"><path fill="#046A38" d="M0 0h2v3H0z"/><path fill="#DA291C" d="M2 0h3v3H2z"/></svg>`,
+	"nl": `<svg ` + flagAttrs + ` viewBox="0 0 3 3"><path fill="#AE1C28" d="M0 0h3v1H0z"/><path fill="#fff" d="M0 1h3v1H0z"/>` +
+		`<path fill="#21468B" d="M0 2h3v1H0z"/></svg>`,
 }

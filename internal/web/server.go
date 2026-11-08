@@ -189,7 +189,10 @@ func (s *Server) inMarkets(p views.Page, current market.Market, k kind, paths ma
 		if m.Key == current.Key {
 			path = current.Localize(path)
 		}
-		p.Regions = append(p.Regions, views.NavLink{Name: m.Short, URL: path, Current: m.Key == current.Key})
+		// Named in the page's language ("É.-U." on a French page), as the
+		// page's own market is in its breadcrumbs.
+		p.Regions = append(p.Regions, views.NavLink{Name: i18n.T(current.Language(), "market."+m.Region()+".short"),
+			URL: path, Current: m.Key == current.Key})
 	}
 	if xDefault != "" {
 		p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + xDefault})

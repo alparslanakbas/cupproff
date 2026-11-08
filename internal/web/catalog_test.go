@@ -32,7 +32,7 @@ func TestCatalogHasTheTablesTexts(t *testing.T) {
 		}
 	}
 	for _, m := range market.All {
-		ids = append(ids, "market."+m.Region()+".name", "market."+m.Region()+".in")
+		ids = append(ids, "market."+m.Region()+".name", "market."+m.Region()+".in", "market."+m.Region()+".short")
 		if m.Note != "" {
 			ids = append(ids, "market."+m.Region()+".note", "market."+m.Region()+".hint")
 		}
@@ -88,11 +88,13 @@ func TestLanguageLinks(t *testing.T) {
 		return strings.Join(out, ", ")
 	}
 	de, _ := market.ByCode("de-eu")
+	const others = ", fr /fr-eu/coffee/x, es /es-eu/coffee/x, it /it-eu/coffee/x, pt /pt-eu/coffee/x, nl /nl-eu/coffee/x"
 	for _, c := range []struct{ name, got, want string }{
-		{"US page not sold in the EU", links(market.US, map[string]string{"en-us": "/en-us/coffee/x"}), "en* /en-us/coffee/x, de /de-eu/"},
+		{"US page not sold in the EU", links(market.US, map[string]string{"en-us": "/en-us/coffee/x"}),
+			"en* /en-us/coffee/x, de /de-eu/, fr /fr-eu/, es /es-eu/, it /it-eu/, pt /pt-eu/, nl /nl-eu/"},
 		{"US page also in the EU", links(market.US, map[string]string{"en-us": "/en-us/coffee/x", "en-eu": "/en-eu/coffee/x"}),
-			"en* /en-us/coffee/x, de /de-eu/coffee/x"},
-		{"German page", links(de, map[string]string{"en-eu": "/de-eu/coffee/x"}), "en /en-eu/coffee/x, de* /de-eu/coffee/x"},
+			"en* /en-us/coffee/x, de /de-eu/coffee/x" + others},
+		{"German page", links(de, map[string]string{"en-eu": "/de-eu/coffee/x"}), "en /en-eu/coffee/x, de* /de-eu/coffee/x" + others},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s: %s\n want %s", c.name, c.got, c.want)
