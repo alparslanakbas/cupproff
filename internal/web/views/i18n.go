@@ -33,10 +33,11 @@ func trh(ctx context.Context, id string, pairs ...string) templ.Component {
 
 // localPages are the pages outside the markets that have a version in each
 // of the site's languages, at "/de/about": the information pages, the
-// watchlist and the comparison. A page joins only once all of its text is
-// in the catalog, so a link never leads to a half-translated page.
+// watchlist and the comparison, the tools. A page joins only once all of its
+// text is in the catalog, so a link never leads to a half-translated page.
+// A path ending in "/" stands for every page under it.
 var localPages = []string{"/how-it-works", "/about", "/contact", "/glossary", "/privacy", "/cookies", "/terms",
-	"/watchlist", "/compare"}
+	"/watchlist", "/compare", "/calculators/", "/which-coffee", "/black-friday", "/cheapest-coffee"}
 
 // IsLocalPage says whether path (no language, no query) has language versions.
 func IsLocalPage(path string) bool {

@@ -40,13 +40,14 @@ func (s *Server) guide(w http.ResponseWriter, r *http.Request) {
 }
 
 // drinks are the caffeine calculator's rows, typical values from the Mayo
-// Clinic's table (read 4 Nov 2026).
+// Clinic's table (read 4 Nov 2026). A drink's name and serving are
+// "drink.<key>.name" and "drink.<key>.serving" in the catalog.
 var drinks = []views.Drink{
-	{Key: "brewed", Name: "Brewed coffee", Serving: "8 oz (237 mL) cup", Mg: 96},
-	{Key: "espresso", Name: "Espresso", Serving: "1 oz (30 mL) shot", Mg: 63},
-	{Key: "instant", Name: "Instant coffee", Serving: "8 oz (237 mL) cup", Mg: 62},
-	{Key: "black", Name: "Black tea", Serving: "8 oz (237 mL) cup, brewed", Mg: 48},
-	{Key: "green", Name: "Green tea", Serving: "8 oz (237 mL) cup, brewed", Mg: 29},
+	{Key: "brewed", Mg: 96},
+	{Key: "espresso", Mg: 63},
+	{Key: "instant", Mg: 62},
+	{Key: "black", Mg: 48},
+	{Key: "green", Mg: 29},
 }
 
 // healthGuide works the caffeine calculator out on the server: it is a plain
@@ -55,9 +56,10 @@ var drinks = []views.Drink{
 // caffeineFrom works the calculator out from its form: the health guide's
 // and the calculators' page share it. An empty form starts at two cups of
 // brewed coffee.
-func caffeineFrom(q url.Values) views.Caffeine {
+func caffeineFrom(lang string, q url.Values) views.Caffeine {
 	c := views.Caffeine{}
 	for _, d := range drinks {
+		d.Name, d.Serving = i18n.T(lang, "drink."+d.Key+".name"), i18n.T(lang, "drink."+d.Key+".serving")
 		switch raw := q.Get(d.Key); {
 		case len(q) == 0 && d.Key == "brewed":
 			d.Count = 2
@@ -70,19 +72,20 @@ func caffeineFrom(q url.Values) views.Caffeine {
 	}
 	switch {
 	case c.Total <= 200:
-		c.Level, c.Message = "green", "Within EFSA's 200 mg for a single dose, and within its 200 mg a day for pregnancy."
+		c.Level = "green"
 	case c.Total <= 400:
-		c.Level, c.Message = "accent", "Within the 400 mg a day the FDA and EFSA see as safe for most healthy adults, but over EFSA's 200 mg a day for pregnancy."
+		c.Level = "accent"
 	default:
-		c.Level, c.Message = "amber", "Over 400 mg: more than the FDA and EFSA consider safe for most adults in a day."
+		c.Level = "amber"
 	}
+	c.Message = i18n.T(lang, "caffeine."+c.Level)
 	c.BarPercent = min(100, c.Total*100/600)
 	return c
 }
 
 func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	c := caffeineFrom(q)
+	c := caffeineFrom(i18n.Lang(r.Context()), q)
 	p := views.Page{
 		Title:       "Coffee and your health: what the research says — CoffeeProof",
 		Lang:        "en",

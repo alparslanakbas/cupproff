@@ -96,14 +96,18 @@ func (s *Server) Handler() http.Handler {
 	local("/compare", s.compare)
 	mux.HandleFunc("GET /compare/toggle", s.toggle(compareCookie, maxCompare))
 	mux.HandleFunc("GET /compare/clear", s.clearCompare)
-	mux.HandleFunc("GET /calculators", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/calculators/", http.StatusMovedPermanently)
-	})
-	mux.HandleFunc("GET /calculators/{$}", s.calculators)
-	mux.HandleFunc("GET /calculators/{slug}", s.calculator)
-	mux.HandleFunc("GET /which-coffee", s.whichCoffee)
-	mux.HandleFunc("GET /black-friday", s.blackFriday)
-	mux.HandleFunc("GET /cheapest-coffee", s.cheapest)
+	calculatorsSlash := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, views.LocalPath(i18n.Lang(r.Context()), "/calculators/"), http.StatusMovedPermanently)
+	}
+	mux.HandleFunc("GET /calculators", calculatorsSlash)
+	for _, lang := range market.Languages() {
+		mux.HandleFunc("GET /"+lang+"/calculators", calculatorsSlash)
+	}
+	local("/calculators/{$}", s.calculators)
+	local("/calculators/{slug}", s.calculator)
+	local("/which-coffee", s.whichCoffee)
+	local("/black-friday", s.blackFriday)
+	local("/cheapest-coffee", s.cheapest)
 	for slug := range infoPages {
 		local("/"+slug, s.info(slug))
 	}

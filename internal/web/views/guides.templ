@@ -34,14 +34,14 @@ templ CaffeineCalc(c Caffeine, action string) {
 		<div class="card calc-drinks">
 			for _, d := range c.Drinks {
 				<label class="drink">
-					<span class="drink-name"><b>{ d.Name }</b><span>{ fmt.Sprintf("%s, about %d mg", d.Serving, d.Mg) }</span></span>
+					<span class="drink-name"><b>{ d.Name }</b><span>{ tr(ctx, "calc.drink_line", "serving", d.Serving, "mg", fmt.Sprint(d.Mg)) }</span></span>
 					<input type="number" name={ d.Key } min="0" max="10" step="1" value={ fmt.Sprint(d.Count) } inputmode="numeric"/>
 				</label>
 			}
-			<button class="btn btn-primary" type="submit">Add it up</button>
+			<button class="btn btn-primary" type="submit">{ tr(ctx, "calc.add_up") }</button>
 		</div>
 		<div class={ "card", "calc-total", "calc-" + c.Level } aria-live="polite">
-			<p class="stat-label">Your day</p>
+			<p class="stat-label">{ tr(ctx, "calc.your_day") }</p>
 			<p class="calc-mg"><b>{ fmt.Sprint(c.Total) }</b> mg</p>
 			<span class="bar" aria-hidden="true"><span class={ "bar-fill", "bar-" + c.Level } style={ fmt.Sprintf("width:%d%%", c.BarPercent) }></span></span>
 			<span class="bar-scale" aria-hidden="true"><span>0</span><span>200 mg</span><span>400 mg</span><span>600</span></span>

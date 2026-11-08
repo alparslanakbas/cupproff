@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,14 @@ func Number(lang string, n int64) string {
 // German.
 func Fixed(lang string, f float64, places int) string {
 	return strings.Replace(strconv.FormatFloat(f, 'f', places, 64), ".", styleOf(lang).decimal, 1)
+}
+
+// Short writes f with at most one decimal, and none when it is whole, as a
+// calculator's answer does: 18.75 is "18.8" in English and "18,8" in German,
+// 320 is "320". No group separator: an answer reads "1600 ml".
+func Short(lang string, f float64) string {
+	s := strconv.FormatFloat(math.Round(f*10)/10, 'f', -1, 64)
+	return strings.Replace(s, ".", styleOf(lang).decimal, 1)
 }
 
 func (st style) number(n int64) string {

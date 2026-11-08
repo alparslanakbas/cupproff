@@ -166,6 +166,17 @@ func (m Market) In(v Variant) Market {
 	return m
 }
 
+// VersionIn is the market's pages in lang, or its English ones when it has
+// no version in lang: a German page links the EU at /de-eu/, the US at /en-us/.
+func (m Market) VersionIn(lang string) Market {
+	for _, v := range m.Versions() {
+		if v.Language() == lang {
+			return v
+		}
+	}
+	return m
+}
+
 // Versions are the market's pages in each of its languages, English first.
 func (m Market) Versions() []Market {
 	base, ok := ByKey(m.Key)

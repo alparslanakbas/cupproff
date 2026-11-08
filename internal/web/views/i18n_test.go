@@ -62,6 +62,8 @@ func TestLocalPath(t *testing.T) {
 		{"en", "/about", "/about"},
 		{"de", "/en-us/", "/en-us/"},
 		{"de", "/guides/", "/guides/"}, // no German guides yet
+		{"es", "/calculators/brew-ratio", "/es/calculators/brew-ratio"},
+		{"es", "/calculators", "/calculators"}, // the redirect to "/calculators/" isn't a page
 		{"de", "/aboutx", "/aboutx"},
 	} {
 		if got := LocalPath(c.lang, c.path); got != c.want {

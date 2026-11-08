@@ -137,11 +137,7 @@ func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, err
 		return views.Card{}, false, nil
 	}
 	lang := i18n.Lang(ctx)
-	for _, v := range m.Versions() {
-		if v.Language() == lang {
-			m = v
-		}
-	}
+	m = m.VersionIn(lang)
 	k := coffeeKind
 	if parts[1] == teaKind.segment {
 		k = teaKind

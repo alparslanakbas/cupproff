@@ -1,6 +1,7 @@
 package web
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -45,6 +46,46 @@ func TestCatalogHasTheTablesTexts(t *testing.T) {
 		ids = append(ids, "currency."+c)
 	}
 	ids = append(ids, "view.drops", "view.sales", "view.all", "lang.name")
+	for _, id := range ids {
+		if !i18n.Has(i18n.Source, id) {
+			t.Errorf("English lacks %q", id)
+		}
+	}
+}
+
+// The tools build their ids from lists and slugs, which the catalog test's
+// scan of the code can't see.
+func TestToolsAreInTheCatalog(t *testing.T) {
+	var ids []string
+	for _, c := range calculatorList {
+		for _, f := range []string{"title", "lede", "page_title", "desc", "crumb", "intro"} {
+			ids = append(ids, "calc."+c.slug+"."+f)
+		}
+	}
+	for _, d := range drinks {
+		ids = append(ids, "drink."+d.Key+".name", "drink."+d.Key+".serving")
+	}
+	for _, level := range []string{"green", "accent", "amber"} {
+		ids = append(ids, "caffeine."+level)
+	}
+	for _, r := range brewRatios {
+		if r.named {
+			ids = append(ids, "brew.ratio."+strconv.FormatFloat(r.value, 'f', -1, 64))
+		}
+	}
+	for _, c := range []string{"decaf", "espresso", "single-origin", "blends", "herbal", "black", "green", "oolong", "pu-erh", "matcha", "chai"} {
+		ids = append(ids, "quiz."+c+".title", "quiz."+c+".why", "quiz."+c+".deals")
+	}
+	for _, v := range []string{"brew.espresso", "brew.filter", "brew.press", "brew.unsure", "taste.strong", "taste.fresh",
+		"taste.between", "taste.earthy", "taste.whisked", "taste.spiced"} {
+		ids = append(ids, "quiz."+v)
+	}
+	for _, k := range kinds {
+		ids = append(ids, "bf.drops."+k.name, "bf.sales."+k.name)
+	}
+	for _, s := range []string{"green", "amber", "raised"} {
+		ids = append(ids, "bf.how."+s)
+	}
 	for _, id := range ids {
 		if !i18n.Has(i18n.Source, id) {
 			t.Errorf("English lacks %q", id)
