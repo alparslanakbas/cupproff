@@ -65,6 +65,12 @@ func main() {
 }
 
 func serve(ctx context.Context, log *slog.Logger) error {
+	// A development machine can look at a market's pages before it opens.
+	// Never set on the server: the market would have pages and no prices.
+	if os.Getenv("CUPPROOF_PREVIEW") == "1" {
+		market.Preview()
+		log.Warn("preview: pending markets are on the site", "markets", len(market.Pending))
+	}
 	pool, err := pgxpool.New(ctx, mustEnv("DATABASE_URL"))
 	if err != nil {
 		return err

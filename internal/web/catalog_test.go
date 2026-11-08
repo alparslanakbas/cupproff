@@ -32,17 +32,18 @@ func TestCatalogHasTheTablesTexts(t *testing.T) {
 			ids = append(ids, o.label)
 		}
 	}
-	for _, m := range market.All {
+	// A pending market's texts are written before it opens.
+	for _, m := range append(append([]market.Market{}, market.All...), market.Pending...) {
 		ids = append(ids, "market."+m.Region()+".name", "market."+m.Region()+".in", "market."+m.Region()+".short")
 		if m.Note != "" {
 			ids = append(ids, "market."+m.Region()+".note", "market."+m.Region()+".hint")
 		}
 	}
 	for _, c := range []string{"US", "GB", "DE", "ES", "SE", "DK", "FR", "NO", "FI", "IE", "IT", "NL", "AU", "CA", "NZ",
-		"BE", "AT", "CH", "PT"} {
+		"BE", "AT", "CH", "PT", "TR"} {
 		ids = append(ids, "country."+c)
 	}
-	for _, c := range []string{"USD", "GBP", "EUR", "DKK", "NOK", "SEK"} {
+	for _, c := range []string{"USD", "GBP", "EUR", "DKK", "NOK", "SEK", "TRY"} {
 		ids = append(ids, "currency."+c)
 	}
 	ids = append(ids, "view.drops", "view.sales", "view.all", "lang.name")

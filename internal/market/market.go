@@ -70,8 +70,26 @@ var EU = Market{Key: "en-eu", Code: "en-eu", Lang: "en", Country: "DE", Currency
 		{Lang: "nl", Hreflangs: []string{"nl-NL", "nl-BE"}},
 	}}
 
+// TR is Türkiye, in English and Turkish, priced in lira for a buyer there.
+// Its first stores (Petra, Montag, Federal and Coffee Sapiens, 8 Nov 2026)
+// are Shopify stores, read only once our crawler's registration with Shopify
+// is approved, so the market waits in Pending until it has prices.
+var TR = Market{Key: "en-tr", Code: "en-tr", Lang: "en-TR", Country: "TR", Currency: "TRY", Name: "Türkiye", Short: "TR",
+	Hreflangs: []string{"en-TR"},
+	Variants:  []Variant{{Lang: "tr", Hreflangs: []string{"tr-TR"}}}}
+
 // All lists the live markets, in the order the region selector shows them.
 var All = []Market{US, UK, EU}
+
+// Pending are markets whose pages are written but whose stores aren't read
+// yet. They stay off the site, with no address, link or sitemap entry, until
+// they move into All: an empty market would be a page of nothing.
+var Pending = []Market{TR}
+
+// Preview puts the pending markets on the site after the live ones, for a
+// look at their pages on a development machine (CUPPROOF_PREVIEW=1). It must
+// run before the server is built: the routes are made from All.
+func Preview() { All = append(slices.Clip(All), Pending...) }
 
 // Languages are the site's languages besides English, in the order the
 // markets list them: a language is on the site once a market speaks it.

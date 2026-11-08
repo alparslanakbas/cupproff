@@ -214,4 +214,9 @@ var flags = map[string]string{
 	"pt": `<svg ` + flagAttrs + ` viewBox="0 0 5 3"><path fill="#046A38" d="M0 0h2v3H0z"/><path fill="#DA291C" d="M2 0h3v3H2z"/></svg>`,
 	"nl": `<svg ` + flagAttrs + ` viewBox="0 0 3 3"><path fill="#AE1C28" d="M0 0h3v1H0z"/><path fill="#fff" d="M0 1h3v1H0z"/>` +
 		`<path fill="#21468B" d="M0 2h3v1H0z"/></svg>`,
+	// The crescent and star where the flag law puts them, measured from the
+	// hoist; the field is cut to the 4:3 box every flag here is drawn in, so
+	// the circles stay round instead of being squeezed from 3:2.
+	"tr": `<svg ` + flagAttrs + ` viewBox="0 0 20 15"><path fill="#E30A17" d="M0 0h20v15H0z"/>` +
+		`<path fill="#fff" d="M10.438 7.5l3.392-1.102-2.097 2.885V5.717l2.097 2.885zM10.669 9.505a3.75 3.75 0 1 1 0-4.01 3 3 0 1 0 0 4.01z"/></svg>`,
 }
