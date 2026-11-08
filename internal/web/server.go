@@ -113,11 +113,15 @@ func (s *Server) Handler() http.Handler {
 	}
 	// The guides are one set for every market. These patterns are narrower
 	// than the market ones above, so ServeMux prefers them.
-	mux.HandleFunc("GET /guides", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/guides/", http.StatusMovedPermanently)
-	})
-	mux.HandleFunc("GET /guides/{$}", s.guidesIndex)
-	mux.HandleFunc("GET /guides/{slug}", s.guide)
+	guidesSlash := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, views.LocalPath(i18n.Lang(r.Context()), "/guides/"), http.StatusMovedPermanently)
+	}
+	mux.HandleFunc("GET /guides", guidesSlash)
+	for _, lang := range market.Languages() {
+		mux.HandleFunc("GET /"+lang+"/guides", guidesSlash)
+	}
+	local("/guides/{$}", s.guidesIndex)
+	local("/guides/{slug}", s.guide)
 	// A "GET" pattern also answers HEAD, which uptime monitors send (the
 	// sister sites' monitor once stayed red because their endpoint didn't).
 	mux.HandleFunc("GET /api/health/sources", s.health)

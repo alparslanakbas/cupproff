@@ -1,13 +1,19 @@
 package views
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
-// The guides' text. Every fact was checked against the source it cites on
-// 4 Nov 2026. The design's drafts said a few things the sources don't (Java's
-// seedlings sent "from Yemen": they went from Malabar, India; Bezzera's
-// patent in 1901: granted 1902; Hawaii's first coffee in 1825: not in either
-// source); those are corrected or gone. Keep it that way: a new claim gets a
-// source, or it doesn't go in.
+// The guides' text, in every language, is in the catalog; this file keeps
+// their shape: which sources a claim cites, where a pin sits on the map.
+// Every fact was checked against the source it cites on 4 Nov 2026. The
+// design's drafts said a few things the sources don't (Java's seedlings sent
+// "from Yemen": they went from Malabar, India; Bezzera's patent in 1901:
+// granted 1902; Hawaii's first coffee in 1825: not in either source); those
+// are corrected or gone. Keep it that way, in every language: a new claim
+// gets a source, or it doesn't go in.
 
 // Drink is one row of the caffeine calculator.
 type Drink struct {
@@ -50,7 +56,8 @@ templ CaffeineCalc(c Caffeine, action string) {
 	</form>
 }
 
-// Source is one entry of a guide's numbered source list.
+// Source is one entry of a guide's numbered source list. Its title stays as
+// the source names itself, in English.
 type Source struct {
 	Title, URL string
 }
@@ -80,133 +87,127 @@ var historySources = []Source{
 	{"Turkish coffee (Wikipedia)", "https://en.wikipedia.org/wiki/Turkish_coffee"},
 }
 
-// Story is one place on the history map. X and Y place its pin, in percent
-// of the map's width and height.
+// Story is one place on the history map: "story.<id>.title" and ".text" in
+// the catalog, Place a "place.<id>", Year a year or "late1400s". X and Y
+// place its pin, in percent of the map's width and height.
 type Story struct {
-	ID, Place, Year, Title, Text string
-	Refs                         []int
-	X, Y                         float64
+	ID, Place, Year string
+	Refs            []int
+	X, Y            float64
 }
 
 var stories = []Story{
-	{"yemen", "Yemen", "Late 1400s", "The first coffee drinkers we know of",
-		"Coffee drinking is first recorded in the late 15th century, among Sufi communities in Yemen. There's no confirmed evidence of coffee as a drink before then. The famous goatherd legend came much later: its first written version, from 1671, is set in Arabia Felix, in the south of the Arabian peninsula.",
-		[]int{1}, 59.08, 48.21},
-	{"istanbul", "Istanbul", "1554", "Istanbul's first coffeehouse",
-		"According to the Ottoman chronicler İbrahim Peçevi, two Arab merchants, from Aleppo and Damascus, opened the city's first coffeehouse in Tahtakale in 1554. In 2013 UNESCO added Turkish coffee culture and tradition to its list of the intangible cultural heritage of humanity.",
-		[]int{1, 8}, 54.79, 30.5},
-	{"venice", "Venice", "1645", "Coffee reaches mainland Europe",
-		"The botanist Prospero Alpini brought coffee to Venice from Egypt in 1580. In 1645 the city opened mainland Europe's first coffeehouse.",
-		[]int{1}, 50.57, 27.7},
-	{"java", "Java", "1711", "Java coffee sails for Europe",
-		"In 1696 the Dutch governor in Malabar, India, sent seedlings of Yemeni arabica to Batavia, now Jakarta. Floods killed the first batch, and a second shipment followed in 1699. In 1711 the Dutch East India Company sent the first Java coffee to Europe.",
-		[]int{2}, 77.56, 61.42},
-	{"martinique", "Martinique", "1720", "Seedlings reach the Caribbean",
-		"Gabriel de Clieu brought coffee seedlings to the island of Martinique in 1720. From there coffee spread to Saint-Domingue, Mexico and other Caribbean islands.",
-		[]int{1}, 30.65, 47.37},
-	{"brazil", "Brazil", "1727", "Brazil's first plantation",
-		"Brazil's first coffee plantation dates from 1727, when Lt. Col. Francisco de Melo Palheta smuggled seeds in from French Guiana. Two centuries later, a coffee surplus left by Brazil's falling prices led Nestlé to develop Nescafé, launched in 1938.",
-		[]int{1, 7}, 34.25, 66.77},
-	{"jamaica", "Jamaica", "1728", "Coffee comes to Jamaica",
-		"Coffee was introduced to Jamaica in 1728. Today only coffee certified by the Jamaica Commodities Regulatory Authority can be sold as Jamaica Blue Mountain, named for mountains that rise to 2,256 m.",
-		[]int{3}, 26.53, 45.19},
-	{"kona", "Kona, Hawaii", "1828", "Brazilian cuttings in Hawaii",
-		"In 1828 the Reverend Samuel Ruggles brought coffee to the Kona district of Hawaii, from Brazilian cuttings.",
-		[]int{4}, 5.15, 44.25},
-	{"panama", "Panama", "2004", "Geisha and the auction records",
-		"The Geisha variety originated in Ethiopia and reached Panama from Costa Rica. The first Geisha ever auctioned, a washed lot from Hacienda La Esmeralda in 2004, sold for $21 a pound. In 2019 a natural Gesha from Elida Estate fetched $1,029 a pound at the Best of Panama auction.",
-		[]int{9, 10}, 24.65, 51.11},
+	{"yemen", "yemen", "late1400s", []int{1}, 59.08, 48.21},
+	{"istanbul", "istanbul", "1554", []int{1, 8}, 54.79, 30.5},
+	{"venice", "venice", "1645", []int{1}, 50.57, 27.7},
+	{"java", "java", "1711", []int{2}, 77.56, 61.42},
+	{"martinique", "martinique", "1720", []int{1}, 30.65, 47.37},
+	{"brazil", "brazil", "1727", []int{1, 7}, 34.25, 66.77},
+	{"jamaica", "jamaica", "1728", []int{3}, 26.53, 45.19},
+	{"kona", "kona_hawaii", "1828", []int{4}, 5.15, 44.25},
+	{"panama", "panama", "2004", []int{9, 10}, 24.65, 51.11},
 }
 
-// Moment is one row of the timeline.
+// Moment is one row of the timeline: its text is "moment.<year>.text",
+// Place a "place.<id>".
 type Moment struct {
-	Year, Place, Text string
-	Refs              []int
+	Year, Place string
+	Refs        []int
 }
 
-// Era is a stretch of the timeline under its own heading.
+// Era is a stretch of the timeline under its own heading, "era.<id>".
 type Era struct {
-	Name    string
+	ID      string
 	Moments []Moment
 }
 
 var eras = []Era{
-	{"Arabia to Europe", []Moment{
-		{"Late 1400s", "Yemen", "Coffee drinking is first recorded, among Sufi communities.", []int{1}},
-		{"1554", "Istanbul", "Two Arab merchants open the city's first coffeehouse, in Tahtakale.", []int{1}},
-		{"1580", "Venice", "The botanist Prospero Alpini brings coffee to Venice from Egypt.", []int{1}},
-		{"1645", "Venice", "Mainland Europe's first coffeehouse opens.", []int{1}},
-		{"1671", "In print", "The goatherd legend first appears in writing, set in Arabia Felix.", []int{1}},
+	{"arabia", []Moment{
+		{"late1400s", "yemen", []int{1}},
+		{"1554", "istanbul", []int{1}},
+		{"1580", "venice", []int{1}},
+		{"1645", "venice", []int{1}},
+		{"1671", "print", []int{1}},
 	}},
-	{"Plantations", []Moment{
-		{"1696", "Java", "The Dutch governor in Malabar sends Yemeni arabica seedlings to Batavia, now Jakarta.", []int{2}},
-		{"1711", "Java", "The first Java coffee is shipped to Europe.", []int{2}},
-		{"1720", "Martinique", "Gabriel de Clieu brings coffee seedlings to the island.", []int{1}},
-		{"1727", "Brazil", "The country's first coffee plantation starts from seeds smuggled in from French Guiana.", []int{1}},
-		{"1728", "Jamaica", "Coffee is introduced to Jamaica.", []int{3}},
-		{"1828", "Kona", "Samuel Ruggles brings Brazilian cuttings to the Kona district.", []int{4}},
+	{"plantations", []Moment{
+		{"1696", "java", []int{2}},
+		{"1711", "java", []int{2}},
+		{"1720", "martinique", []int{1}},
+		{"1727", "brazil", []int{1}},
+		{"1728", "jamaica", []int{3}},
+		{"1828", "kona", []int{4}},
 	}},
-	{"Inventions", []Moment{
-		{"1884", "Turin", "Angelo Moriondo patents a steam-driven \"instantaneous\" coffee machine.", []int{5}},
-		{"1902", "Milan", "Luigi Bezzera patents improvements to the machine. Desiderio Pavoni buys the patent in 1903.", []int{5}},
-		{"1903", "Decaf", "Ludwig Roselius invents a way to take the caffeine out of coffee. It's patented in 1906.", []int{6}},
-		{"1938", "Switzerland", "Nestlé launches Nescafé, made to use up a coffee surplus after Brazil's prices fell.", []int{7}},
-		{"1945", "Italy", "Achille Gaggia develops the lever-driven espresso machine.", []int{5}},
+	{"inventions", []Moment{
+		{"1884", "turin", []int{5}},
+		{"1902", "milan", []int{5}},
+		{"1903", "decaf", []int{6}},
+		{"1938", "switzerland", []int{7}},
+		{"1945", "italy", []int{5}},
 	}},
-	{"Since 2000", []Moment{
-		{"2004", "Panama", "The first Geisha ever auctioned sells for $21 a pound.", []int{9}},
-		{"2013", "UNESCO", "Turkish coffee culture and tradition joins UNESCO's list of intangible cultural heritage.", []int{8}},
-		{"2019", "Panama", "An Elida Estate Gesha fetches $1,029 a pound at the Best of Panama auction.", []int{10}},
+	{"since2000", []Moment{
+		{"2004", "panama", []int{9}},
+		{"2013", "unesco", []int{8}},
+		{"2019", "panama", []int{10}},
 	}},
 }
 
-// BagName is one of the famous names on a coffee bag.
+// BagName is one of the famous names on a coffee bag: "bag.<id>.name" and
+// ".text", and ".link" when it links; Kind is a "bagkind.<id>".
 type BagName struct {
-	Name, Kind, Text string
-	Refs             []int
-	LinkLabel        string
-	LinkURL          string // "#today" is shown only when today's list has one
+	ID, Kind string
+	Refs     []int
+	LinkURL  string // "#today" is shown only when today's list has one
 }
 
 var bagNames = []BagName{
-	{"Turkish coffee", "Way of brewing", "Very finely ground coffee, brought just to the boil in a cezve and served unfiltered, with the grounds left in the cup. UNESCO listed Turkish coffee culture and tradition in 2013.",
-		[]int{11, 8}, "What unfiltered coffee means for your health", "/guides/coffee-and-health#filter"},
-	{"Espresso", "Way of brewing", "Coffee brewed by forcing hot, pressurised water through finely ground coffee. Angelo Moriondo of Turin patented a steam-driven coffee machine in 1884.",
-		[]int{5}, "", ""},
-	{"Java", "Origin", "Coffee from the Indonesian island of Java. By 1719 the Dutch East India Company could supply Europe's demand with \"Java coffee\".",
-		[]int{1}, "", ""},
-	{"Jamaica Blue Mountain", "Protected name", "Only coffee certified by the Jamaica Commodities Regulatory Authority can be sold under this name.",
-		[]int{3}, "", ""},
-	{"Kona", "Origin", "Coffee from the Kona district of Hawaii, where Samuel Ruggles brought Brazilian cuttings in 1828.",
-		[]int{4}, "", ""},
-	{"Geisha or Gesha", "Variety", "A coffee variety that originated in Ethiopia. Panama made it famous at auction.",
-		[]int{9}, "Gesha on today's list", "#today"},
-	{"Decaf", "Process", "US standards require at least 97% of the caffeine to be removed; the EU standard is 99.9% caffeine-free by mass. Ludwig Roselius invented the first commercial process in 1903.",
-		[]int{6}, "", ""},
-	{"Instant", "Process", "Nestlé launched Nescafé in Switzerland on 1 April 1938, made to use up a coffee surplus.",
-		[]int{7}, "", ""},
+	{"turkish", "brewing", []int{11, 8}, "/guides/coffee-and-health#filter"},
+	{"espresso", "brewing", []int{5}, ""},
+	{"java", "origin", []int{1}, ""},
+	{"bluemountain", "protected", []int{3}, ""},
+	{"kona", "origin", []int{4}, ""},
+	{"gesha", "variety", []int{9}, "#today"},
+	{"decaf", "process", []int{6}, ""},
+	{"instant", "process", []int{7}, ""},
 }
 
-// Answer is one card of "Jump to an answer" on the guides page.
+// Answer is one card of "Jump to an answer" on the guides page:
+// "answer.<id>.q" and ".a", Tag a catalog id.
 type Answer struct {
-	Q, A, Tag, URL string
+	ID, Tag, URL string
 }
 
 var answers = []Answer{
-	{"How much caffeine is too much?", "Up to 400 mg a day for most healthy adults, and 200 mg in pregnancy.", "Health guide", "/guides/coffee-and-health#short-answer"},
-	{"Caffeine calculator", "Add up your coffee and tea and see where your day lands.", "Health guide", "/guides/coffee-and-health#calculator"},
-	{"Myth or fact?", "Decaf, espresso, cancer and the 400 mg rule, checked against the sources.", "Health guide", "/guides/coffee-and-health#myths"},
-	{"Is French press coffee bad for cholesterol?", "Unfiltered coffee keeps about 30 times more diterpenes than filtered.", "Health guide", "/guides/coffee-and-health#filter"},
-	{"Should I stop coffee after 5 p.m.?", "What a 2013 sleep study found when caffeine came six hours before bed.", "Health guide", "/guides/coffee-and-health#not-so-good"},
-	{"Where was coffee first drunk?", "Among Sufi communities in Yemen, by the late 1400s.", "History guide", "/guides/coffee-history#map"},
-	{"The coffee timeline", "From Yemen to the first espresso patents and the auction records.", "History guide", "/guides/coffee-history#timeline"},
-	{"What do \"Kona\" or \"Blue Mountain\" mean on a bag?", "Places, plants and ways of brewing: eight famous names explained.", "History guide", "/guides/coffee-history#names"},
-	{"How do we spot a real price drop?", "We compare today's price with the usual price over 30 days, not with the store's \"was\" price.", "How it works", "/#how"},
+	{"too_much", "guides.tag.health", "/guides/coffee-and-health#short-answer"},
+	{"calculator", "guides.tag.health", "/guides/coffee-and-health#calculator"},
+	{"myths", "guides.tag.health", "/guides/coffee-and-health#myths"},
+	{"cholesterol", "guides.tag.health", "/guides/coffee-and-health#filter"},
+	{"after5", "guides.tag.health", "/guides/coffee-and-health#not-so-good"},
+	{"first", "guides.tag.history", "/guides/coffee-history#map"},
+	{"timeline", "guides.tag.history", "/guides/coffee-history#timeline"},
+	{"names", "guides.tag.history", "/guides/coffee-history#names"},
+	{"drop", "footer.how_it_works", "/#how"},
+}
+
+// answerURL is where an answer leads in the page's language. "/#how" is the
+// English home page's section; another language has the page instead.
+func answerURL(ctx context.Context, a Answer) string {
+	if a.URL == "/#how" && lp(ctx, "/how-it-works") != "/how-it-works" {
+		return lp(ctx, "/how-it-works")
+	}
+	return lp(ctx, a.URL)
+}
+
+// yearText is a year as the timeline shows it: "late1400s" is words.
+func yearText(ctx context.Context, y string) string {
+	if strings.HasPrefix(y, "late") {
+		return tr(ctx, "year."+y)
+	}
+	return y
 }
 
 // ref is a numbered link to the guide's source list.
 templ ref(n int) {
-	<a class="ref" href={ templ.SafeURL(fmt.Sprintf("#src-%d", n)) } aria-label={ fmt.Sprintf("Source %d", n) }>{ fmt.Sprint(n) }</a>
+	<a class="ref" href={ templ.SafeURL(fmt.Sprintf("#src-%d", n)) } aria-label={ tr(ctx, "guides.source_aria", "n", fmt.Sprint(n)) }>{ fmt.Sprint(n) }</a>
 }
 
 templ refs(ns []int) {
@@ -223,14 +224,14 @@ templ sourceList(list []Source) {
 	</ol>
 }
 
-templ guideHero(crumb, title, lede string, sources int) {
+templ guideHero(p Page, crumb, title, lede string, sources int) {
 	<section class="wrap">
 		<div class="page-hero guide-hero">
 			<div>
-				<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/guides/">Guides</a><span>/</span><span>{ crumb }</span></nav>
+				<nav class="crumbs" aria-label={ tr(ctx, "nav.breadcrumb") }><a href={ templ.SafeURL(homeURL(p)) }>{ tr(ctx, "nav.home") }</a><span>/</span><a href={ templ.SafeURL(lp(ctx, "/guides/")) }>{ tr(ctx, "nav.guides") }</a><span>/</span><span>{ crumb }</span></nav>
 				<h1>{ title }</h1>
 				<p class="lede">{ lede }</p>
-				<p class="guide-meta"><span class="chip">Updated Nov 2026</span><span class="chip">{ fmt.Sprintf("%d sources", sources) }</span></p>
+				<p class="guide-meta"><span class="chip">{ tr(ctx, "guides.updated") }</span><span class="chip">{ trn(ctx, "guides.sources", int64(sources)) }</span></p>
 			</div>
 		</div>
 	</section>
@@ -239,31 +240,31 @@ templ guideHero(crumb, title, lede string, sources int) {
 // guideCards are the two guides as cards: on the guides page and the home page.
 templ guideCards() {
 	<div class="guide-cards">
-		<a class="guide-card" href="/guides/coffee-and-health">
+		<a class="guide-card" href={ templ.SafeURL(lp(ctx, "/guides/coffee-and-health")) }>
 			<span class="guide-visual guide-visual-health" aria-hidden="true">
-				<span class="chip">Health</span>
+				<span class="chip">{ tr(ctx, "guides.health.chip") }</span>
 				<b>400 mg</b>
-				<span>a day for most healthy adults</span>
+				<span>{ tr(ctx, "guides.health.visual") }</span>
 				<span class="bar"><span class="bar-fill bar-accent" style="width: 66%"></span></span>
 			</span>
 			<span class="guide-card-body">
-				<h3>Coffee and your health: what the research says</h3>
-				<span class="brand-meta">The good, the not so good, how much caffeine is too much, and a calculator for your day.</span>
-				<span class="guide-card-foot"><span class="chip">8 sources</span><span class="link">Read the guide</span></span>
+				<h3>{ tr(ctx, "guides.health.title") }</h3>
+				<span class="brand-meta">{ tr(ctx, "guides.health.card") }</span>
+				<span class="guide-card-foot"><span class="chip">{ trn(ctx, "guides.sources", int64(len(healthSources))) }</span><span class="link">{ tr(ctx, "guides.read") }</span></span>
 			</span>
 		</a>
-		<a class="guide-card" href="/guides/coffee-history">
+		<a class="guide-card" href={ templ.SafeURL(lp(ctx, "/guides/coffee-history")) }>
 			<span class="guide-visual guide-visual-map" aria-hidden="true">
-				<span class="chip">History</span>
+				<span class="chip">{ tr(ctx, "guides.history.chip") }</span>
 				<img src="/static/dotmap.svg" alt="" width="1200" height="600" loading="lazy"/>
 				for _, s := range stories {
 					<i class="dotpin" style={ fmt.Sprintf("left:%.2f%%;top:%.2f%%", s.X, s.Y) }></i>
 				}
 			</span>
 			<span class="guide-card-body">
-				<h3>How coffee travelled the world</h3>
-				<span class="brand-meta">A map of nine places, a timeline from Yemen to the 2019 auction record, and what famous names on a bag mean.</span>
-				<span class="guide-card-foot"><span class="chip">11 sources</span><span class="link">Read the guide</span></span>
+				<h3>{ tr(ctx, "guides.history.title") }</h3>
+				<span class="brand-meta">{ tr(ctx, "guides.history.card") }</span>
+				<span class="guide-card-foot"><span class="chip">{ trn(ctx, "guides.sources", int64(len(historySources))) }</span><span class="link">{ tr(ctx, "guides.read") }</span></span>
 			</span>
 		</a>
 	</div>
@@ -274,43 +275,43 @@ templ guidesTeaser() {
 	<section class="section">
 		<div class="section-head">
 			<div>
-				<h2>Coffee guides</h2>
-				<p>Short reads on caffeine, health and coffee's history. Every fact links to its source.</p>
+				<h2>{ tr(ctx, "guides.title") }</h2>
+				<p>{ tr(ctx, "guides.teaser") }</p>
 			</div>
-			<a class="btn btn-ghost" href="/guides/">All guides</a>
+			<a class="btn btn-ghost" href={ templ.SafeURL(lp(ctx, "/guides/")) }>{ tr(ctx, "guides.all") }</a>
 		</div>
 		@guideCards()
 	</section>
 }
 
-templ guidesHero() {
+templ guidesHero(p Page) {
 	<section class="wrap">
 		<div class="page-hero">
 			<div>
-				<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><span>Guides</span></nav>
-				<h1>Coffee guides</h1>
-				<p class="lede">Short reads on caffeine, health and coffee's history, plus how we judge a price drop. Every fact links to its source.</p>
+				<nav class="crumbs" aria-label={ tr(ctx, "nav.breadcrumb") }><a href={ templ.SafeURL(homeURL(p)) }>{ tr(ctx, "nav.home") }</a><span>/</span><span>{ tr(ctx, "nav.guides") }</span></nav>
+				<h1>{ tr(ctx, "guides.title") }</h1>
+				<p class="lede">{ tr(ctx, "guides.lede") }</p>
 			</div>
 		</div>
 	</section>
 }
 
 templ GuidesIndex(p Page) {
-	@Layout(p, guidesHero()) {
+	@Layout(p, guidesHero(p)) {
 		@guideCards()
 		<section class="section">
 			<div class="section-head">
 				<div>
-					<h2>Jump to an answer</h2>
-					<p>Each one opens the part of a guide that answers it.</p>
+					<h2>{ tr(ctx, "guides.jump") }</h2>
+					<p>{ tr(ctx, "guides.jump_lede") }</p>
 				</div>
 			</div>
 			<div class="jump-grid">
 				for _, a := range answers {
-					<a class="jump-card" href={ templ.SafeURL(a.URL) }>
-						<span class="jump-tag">{ a.Tag }</span>
-						<h3>{ a.Q }</h3>
-						<span class="brand-meta">{ a.A }</span>
+					<a class="jump-card" href={ templ.SafeURL(answerURL(ctx, a)) }>
+						<span class="jump-tag">{ tr(ctx, a.Tag) }</span>
+						<h3>{ tr(ctx, "answer."+a.ID+".q") }</h3>
+						<span class="brand-meta">{ tr(ctx, "answer."+a.ID+".a") }</span>
 					</a>
 				}
 			</div>
@@ -318,146 +319,188 @@ templ GuidesIndex(p Page) {
 		<section class="section">
 			<div class="write-box">
 				<div>
-					<h2>How we write these guides</h2>
-					<p>The same rule as our prices: don't take a claim on trust, show where it comes from.</p>
+					<h2>{ tr(ctx, "guides.write.h") }</h2>
+					<p>{ tr(ctx, "guides.write.p") }</p>
 					<p class="write-chips"><span>FDA</span><span>EFSA</span><span>Mayo Clinic</span><span>The BMJ</span><span>IARC</span><span>AASM</span><span>Harvard Health</span><span>UNESCO</span><span>Wikipedia</span></p>
 				</div>
 				<ul>
-					<li><b>Every claim links to its source.</b> Public health agencies, peer-reviewed research and named reference works, listed at the end of each guide.</li>
-					<li><b>Links, not causes.</b> Most coffee research is observational. When a study shows a link, we call it a link.</li>
-					<li><b>Not medical advice.</b> The health guide is general information. Talk to your doctor about your own caffeine limits.</li>
+					for _, s := range []string{"li1", "li2", "li3"} {
+						<li>
+							@trh(ctx, "guides.write."+s)
+						</li>
+					}
 				</ul>
 			</div>
 		</section>
 	}
 }
 
-templ HealthGuide(p Page, c Caffeine) {
-	@Layout(p, guideHero("Health", "Coffee and your health: what the research says", "The good, the not so good, and how much caffeine is too much. Every claim links to its source.", len(healthSources))) {
+// The health guide's cards, in order; each is "<part>.<id>.h" and ".p".
+var goodCards = []struct {
+	id   string
+	refs []int
+}{{"life", []int{4}}, {"heart", []int{4}}, {"liver", []int{4}}, {"cancer", []int{6}}}
+
+var badCards = []struct {
+	id   string
+	refs []int
+}{{"sleep", []int{7}}, {"cholesterol", []int{5}}, {"pregnancy", []int{4, 2}}, {"bones", []int{4}}, {"toomuch", []int{1}}, {"hot", []int{6}}}
+
+var carefulItems = []struct {
+	id   string
+	refs []int
+}{{"pregnant", []int{1, 2}}, {"children", []int{2}}, {"sensitive", []int{1}}, {"fractures", []int{4}}}
+
+var myths = []struct {
+	id   string
+	refs []int
+}{{"decaf", []int{8}}, {"espresso", []int{3}}, {"cancer", []int{6}}, {"limit", []int{1, 2}}}
+
+// healthToc is the health guide's "On this page": a section and its name.
+var healthToc = []struct{ id, name string }{
+	{"short-answer", "health.short.h"}, {"calculator", "calc.caffeine.title"}, {"the-good", "health.good.h"},
+	{"not-so-good", "health.bad.h"}, {"filter", "health.filter.h"}, {"careful", "health.careful.h"},
+	{"myths", "health.myths.h"}, {"sources", "guides.sources_h"},
+}
+
+templ HealthGuide(p Page, c Caffeine, drops NavLink) {
+	@Layout(p, guideHero(p, tr(ctx, "guides.health.chip"), tr(ctx, "guides.health.title"), tr(ctx, "health.lede"), len(healthSources))) {
 		<div class="guide-layout">
 			<article class="guide">
 				<section class="answer-box" id="short-answer">
-					<h2>The short answer</h2>
+					<h2>{ tr(ctx, "health.short.h") }</h2>
 					<ul>
-						<li>For most healthy adults, up to <strong>400 mg of caffeine a day</strong> isn't linked to harmful effects. The FDA puts that at about two to three 12 oz cups of coffee. @refs([]int{1, 2})</li>
-						<li>Pregnant or breastfeeding? EFSA's level is <strong>200 mg a day</strong>. Ask your doctor too. @ref(2)</li>
-						<li>In a big 2017 review, <strong>three to four cups a day</strong> went with a lower risk of several diseases. Those studies can't prove coffee is the cause. @ref(4)</li>
+						<li>
+							@trh(ctx, "health.short.li1")
+							@templ.Raw(" ")
+							@refs([]int{1, 2})
+						</li>
+						<li>
+							@trh(ctx, "health.short.li2")
+							@templ.Raw(" ")
+							@ref(2)
+						</li>
+						<li>
+							@trh(ctx, "health.short.li3")
+							@templ.Raw(" ")
+							@ref(4)
+						</li>
 					</ul>
 				</section>
 				<section class="guide-section" id="calculator">
-					<h2>How much caffeine is in your day?</h2>
-					<p>Add the drinks you have on a normal day. Amounts are typical values from the Mayo Clinic; your cup can differ with the beans, the brew and the size. @ref(3)</p>
-					@CaffeineCalc(c, "/guides/coffee-and-health#calculator")
+					<h2>{ tr(ctx, "health.calc.h") }</h2>
+					<p>{ tr(ctx, "calc.caffeine.intro") } @ref(3)</p>
+					@CaffeineCalc(c, lp(ctx, "/guides/coffee-and-health")+"#calculator")
 				</section>
 				<section class="guide-section" id="the-good">
-					<h2>The good</h2>
-					<p>A 2017 BMJ umbrella review looked at more than 200 meta-analyses. Coffee came out more likely to benefit health than to harm it. @ref(4)</p>
+					<h2>{ tr(ctx, "health.good.h") }</h2>
+					<p>{ tr(ctx, "health.good.p") } @ref(4)</p>
 					<div class="fact-grid">
-						<div class="fact-card fact-green"><h3>Linked with a longer life</h3><p>Coffee drinkers had a lower risk of dying from any cause, with the biggest drop at three to four cups a day. @ref(4)</p></div>
-						<div class="fact-card fact-green"><h3>Lower risk of heart disease</h3><p>The same review linked coffee with less cardiovascular disease and fewer deaths from it. @ref(4)</p></div>
-						<div class="fact-card fact-green"><h3>Kinder to the liver</h3><p>Coffee went with a lower risk of liver conditions, including liver cancer. @ref(4)</p></div>
-						<div class="fact-card fact-green"><h3>Not shown to cause cancer</h3><p>In 2016 the WHO's cancer agency, IARC, found no conclusive evidence that drinking coffee causes cancer, and lists it as "not classifiable". @ref(6)</p></div>
+						for _, f := range goodCards {
+							<div class="fact-card fact-green"><h3>{ tr(ctx, "health.good."+f.id+".h") }</h3><p>{ tr(ctx, "health.good."+f.id+".p") } @refs(f.refs)</p></div>
+						}
 					</div>
-					<p class="note">These come from observational studies, so they show links, not causes. The BMJ authors say they can't recommend starting coffee for your health. @ref(4)</p>
+					<p class="note">{ tr(ctx, "health.good.note") } @ref(4)</p>
 				</section>
 				<section class="guide-section" id="not-so-good">
-					<h2>The not so good</h2>
-					<p>None of this means coffee is bad for you. It means there are limits worth knowing.</p>
+					<h2>{ tr(ctx, "health.bad.h") }</h2>
+					<p>{ tr(ctx, "health.bad.p") }</p>
 					<div class="fact-grid">
-						<div class="fact-card fact-amber"><h3>It can cost you sleep</h3><p>In a 2013 study, 400 mg of caffeine taken six hours before bed cut sleep by more than an hour, and people didn't notice. The AASM, which published it, says caffeine should generally be avoided after 5 p.m. @ref(7)</p></div>
-						<div class="fact-card fact-amber"><h3>Unfiltered coffee and cholesterol</h3><p>French press and Turkish coffee keep compounds called diterpenes, about 30 times more than filtered coffee. They can raise cholesterol. @ref(5)</p></div>
-						<div class="fact-card fact-amber"><h3>Pregnancy needs a lower limit</h3><p>High intake in pregnancy is linked with low birth weight, preterm birth and pregnancy loss. EFSA's level is 200 mg a day; check with your doctor. @refs([]int{4, 2})</p></div>
-						<div class="fact-card fact-amber"><h3>Bones in women</h3><p>The BMJ review found a higher fracture risk in women, though not in men. @ref(4)</p></div>
-						<div class="fact-card fact-amber"><h3>Too much, too fast</h3><p>Signs include jitters, anxiety, a fast heart rate and poor sleep. Toxic effects such as seizures can come from about 1,200 mg taken quickly: less than half a teaspoon of pure caffeine. @ref(1)</p></div>
-						<div class="fact-card fact-amber"><h3>Very hot drinks</h3><p>IARC classes drinks hotter than 65 °C as probably carcinogenic. Give your cup a minute. @ref(6)</p></div>
+						for _, f := range badCards {
+							<div class="fact-card fact-amber"><h3>{ tr(ctx, "health.bad."+f.id+".h") }</h3><p>{ tr(ctx, "health.bad."+f.id+".p") } @refs(f.refs)</p></div>
+						}
 					</div>
-					<p class="note">The research is about coffee itself, not the sugar, syrups and pastries that often come with it. @ref(4)</p>
+					<p class="note">{ tr(ctx, "health.bad.note") } @ref(4)</p>
 				</section>
 				<section class="guide-section" id="filter">
-					<h2>Your filter matters</h2>
-					<p>How you brew changes what ends up in the cup. Harvard Health suggests saving unfiltered coffee for rare occasions and keeping to fewer than five cups a day on average. @ref(5)</p>
+					<h2>{ tr(ctx, "health.filter.h") }</h2>
+					<p>{ tr(ctx, "health.filter.p") } @ref(5)</p>
 					<div class="fact-grid">
-						<div class="fact-card"><span class="badge badge-green">Filtered</span><h3>Pour-over and drip</h3><p>A filtered cup has about a thirtieth of the diterpenes of an unfiltered one. @ref(5)</p></div>
-						<div class="fact-card"><span class="badge badge-amber">Unfiltered</span><h3>French press and Turkish</h3><p>About 30 times more diterpenes than filtered coffee. @ref(5)</p></div>
+						<div class="fact-card"><span class="badge badge-green">{ tr(ctx, "health.filter.filtered") }</span><h3>{ tr(ctx, "health.filter.filtered.h") }</h3><p>{ tr(ctx, "health.filter.filtered.p") } @ref(5)</p></div>
+						<div class="fact-card"><span class="badge badge-amber">{ tr(ctx, "health.filter.unfiltered") }</span><h3>{ tr(ctx, "health.filter.unfiltered.h") }</h3><p>{ tr(ctx, "health.filter.unfiltered.p") } @ref(5)</p></div>
 					</div>
 				</section>
 				<section class="guide-section" id="careful">
-					<h2>Who should be careful</h2>
+					<h2>{ tr(ctx, "health.careful.h") }</h2>
 					<ul class="careful">
-						<li><b>Pregnant, trying or breastfeeding:</b> the FDA says to ask your provider whether to limit caffeine; EFSA's level is 200 mg a day. @refs([]int{1, 2})</li>
-						<li><b>Children and teens:</b> EFSA suggests 3 mg per kg of body weight a day as a safe level. @ref(2)</li>
-						<li><b>People who feel caffeine strongly:</b> how sensitive people are, and how fast they clear caffeine, varies widely. If you cut back, go gradually: withdrawal isn't dangerous, but it can be unpleasant. @ref(1)</li>
-						<li><b>Women at risk of fractures or with osteoporosis:</b> the BMJ authors suggest keeping coffee to a minimum. @ref(4)</li>
+						for _, it := range carefulItems {
+							<li>
+								@trh(ctx, "health.careful."+it.id)
+								@templ.Raw(" ")
+								@refs(it.refs)
+							</li>
+						}
 					</ul>
 				</section>
 				<section class="guide-section" id="myths">
-					<h2>Myth or fact?</h2>
-					<p>Open a card to check.</p>
+					<h2>{ tr(ctx, "health.myths.h") }</h2>
+					<p>{ tr(ctx, "health.myths.p") }</p>
 					<div class="fact-grid">
-						<details class="myth"><summary>"Decaf has no caffeine."</summary><p><b>Myth.</b> US rules require at least 97% of the caffeine to be removed, so a little is left. @ref(8)</p></details>
-						<details class="myth"><summary>"A shot of espresso has more caffeine than a mug of coffee."</summary><p><b>Myth.</b> A 1 oz shot has about 63 mg; an 8 oz cup of brewed coffee about 96 mg. Espresso is stronger per sip, not per serving. @ref(3)</p></details>
-						<details class="myth"><summary>"Coffee is on the list of things that cause cancer."</summary><p><b>Myth.</b> IARC's 2016 review found no conclusive evidence and lists coffee as "not classifiable". Drinks hotter than 65 °C are a separate warning. @ref(6)</p></details>
-						<details class="myth"><summary>"Up to 400 mg a day is fine for most healthy adults."</summary><p><b>Fact.</b> That's the level the FDA and EFSA use. Pregnancy has a lower one: 200 mg a day. @refs([]int{1, 2})</p></details>
+						for _, m := range myths {
+							<details class="myth">
+								<summary>{ tr(ctx, "health.myth."+m.id+".q") }</summary>
+								<p>
+									@trh(ctx, "health.myth."+m.id+".a")
+									@templ.Raw(" ")
+									@refs(m.refs)
+								</p>
+							</details>
+						}
 					</div>
 				</section>
 				<section class="guide-section" id="sources">
-					<h2>Sources</h2>
+					<h2>{ tr(ctx, "guides.sources_h") }</h2>
 					@sourceList(healthSources)
-					<p class="note">This guide is general information, not medical advice. If you have a health condition, take medication or are pregnant, talk to your doctor about caffeine.</p>
+					<p class="note">{ tr(ctx, "health.note") }</p>
 				</section>
-				<nav class="next-cards" aria-label="More to read">
-					<a href="/guides/coffee-history"><span>Next guide</span><b>How coffee travelled the world</b></a>
-					<a href="/en-us/?show=drops"><span>Back to prices</span><b>Today's US coffee drops</b></a>
+				<nav class="next-cards" aria-label={ tr(ctx, "guides.more") }>
+					<a href={ templ.SafeURL(lp(ctx, "/guides/coffee-history")) }><span>{ tr(ctx, "guides.next") }</span><b>{ tr(ctx, "guides.history.title") }</b></a>
+					<a href={ templ.SafeURL(drops.URL) }><span>{ tr(ctx, "guides.back_prices") }</span><b>{ drops.Name }</b></a>
 				</nav>
 			</article>
 			<aside class="toc">
-				<p class="stat-label">On this page</p>
-				<a href="#short-answer">The short answer</a>
-				<a href="#calculator">Caffeine calculator</a>
-				<a href="#the-good">The good</a>
-				<a href="#not-so-good">The not so good</a>
-				<a href="#filter">Your filter matters</a>
-				<a href="#careful">Who should be careful</a>
-				<a href="#myths">Myth or fact?</a>
-				<a href="#sources">Sources</a>
+				<p class="stat-label">{ tr(ctx, "guides.on_page") }</p>
+				for _, t := range healthToc {
+					<a href={ templ.SafeURL("#" + t.id) }>{ tr(ctx, t.name) }</a>
+				}
 			</aside>
 		</div>
 	}
 }
 
-templ HistoryGuide(p Page, today []Card, labels Labels) {
-	@Layout(p, guideHero("History", "How coffee travelled the world", "From Sufi communities in Yemen to auction records in Panama. Pick a place on the map to read what happened there.", len(historySources))) {
+templ HistoryGuide(p Page, today []Card, labels Labels, market string) {
+	@Layout(p, guideHero(p, tr(ctx, "guides.history.chip"), tr(ctx, "guides.history.title"), tr(ctx, "history.lede"), len(historySources))) {
 		<section class="map-card card" id="map">
 			<div class="map">
-				<img src="/static/dotmap.svg" alt="World map with the nine places of this guide" width="1200" height="600"/>
+				<img src="/static/dotmap.svg" alt={ tr(ctx, "history.map_alt") } width="1200" height="600"/>
 				for i, s := range stories {
-					<a class="pin" href={ templ.SafeURL("#story-" + s.ID) } style={ fmt.Sprintf("left:%.2f%%;top:%.2f%%", s.X, s.Y) } title={ s.Place + ", " + s.Year }>{ fmt.Sprint(i + 1) }</a>
+					<a class="pin" href={ templ.SafeURL("#story-" + s.ID) } style={ fmt.Sprintf("left:%.2f%%;top:%.2f%%", s.X, s.Y) } title={ tr(ctx, "place."+s.Place) + ", " + yearText(ctx, s.Year) }>{ fmt.Sprint(i + 1) }</a>
 				}
 			</div>
-			<p class="map-note">World map dots from world-atlas data (ISC licence).</p>
+			<p class="map-note">{ tr(ctx, "history.map_note") }</p>
 		</section>
 		<div class="stories">
 			for i, s := range stories {
 				<article class="story card" id={ "story-" + s.ID }>
-					<p class="story-head"><span class="pin pin-static">{ fmt.Sprint(i + 1) }</span><span class="chip">{ s.Place }</span></p>
-					<p class="story-year">{ s.Year }</p>
-					<h3>{ s.Title }</h3>
-					<p>{ s.Text } @refs(s.Refs)</p>
+					<p class="story-head"><span class="pin pin-static">{ fmt.Sprint(i + 1) }</span><span class="chip">{ tr(ctx, "place."+s.Place) }</span></p>
+					<p class="story-year">{ yearText(ctx, s.Year) }</p>
+					<h3>{ tr(ctx, "story."+s.ID+".title") }</h3>
+					<p>{ tr(ctx, "story."+s.ID+".text") } @refs(s.Refs)</p>
 				</article>
 			}
 		</div>
 		<section class="section" id="timeline">
 			<div class="section-head">
 				<div>
-					<h2>The timeline</h2>
-					<p>19 moments, oldest first.</p>
+					<h2>{ tr(ctx, "history.timeline.h") }</h2>
+					<p>{ tr(ctx, "history.timeline.p") }</p>
 				</div>
 			</div>
 			for _, e := range eras {
-				<h3 class="era">{ e.Name }</h3>
+				<h3 class="era">{ tr(ctx, "era."+e.ID) }</h3>
 				<ol class="timeline">
 					for _, m := range e.Moments {
-						<li><span class="tl-year"><b>{ m.Year }</b><span>{ m.Place }</span></span><p>{ m.Text } @refs(m.Refs)</p></li>
+						<li><span class="tl-year"><b>{ yearText(ctx, m.Year) }</b><span>{ tr(ctx, "place."+m.Place) }</span></span><p>{ tr(ctx, "moment."+m.Year+".text") } @refs(m.Refs)</p></li>
 					}
 				</ol>
 			}
@@ -465,17 +508,17 @@ templ HistoryGuide(p Page, today []Card, labels Labels) {
 		<section class="section" id="names">
 			<div class="section-head">
 				<div>
-					<h2>Famous names on a bag</h2>
-					<p>Some are places, some are plants and some are ways of making coffee. Here's what each one tells you.</p>
+					<h2>{ tr(ctx, "history.names.h") }</h2>
+					<p>{ tr(ctx, "history.names.p") }</p>
 				</div>
 			</div>
 			<div class="names">
 				for _, n := range bagNames {
 					<div class="name-item">
-						<h3>{ n.Name } <span class="chip">{ n.Kind }</span></h3>
-						<p>{ n.Text } @refs(n.Refs)</p>
+						<h3>{ tr(ctx, "bag."+n.ID+".name") } <span class="chip">{ tr(ctx, "bagkind."+n.Kind) }</span></h3>
+						<p>{ tr(ctx, "bag."+n.ID+".text") } @refs(n.Refs)</p>
 						if n.LinkURL != "" && (n.LinkURL != "#today" || len(today) > 0) {
-							<a class="link" href={ templ.SafeURL(n.LinkURL) }>{ n.LinkLabel }</a>
+							<a class="link" href={ templ.SafeURL(lp(ctx, n.LinkURL)) }>{ tr(ctx, "bag."+n.ID+".link") }</a>
 						}
 					</div>
 				}
@@ -485,11 +528,11 @@ templ HistoryGuide(p Page, today []Card, labels Labels) {
 			<section class="section" id="today">
 				<div class="section-head">
 					<div>
-						<h2>From the map to today's list</h2>
-						<p>The variety behind those auction records, on today's US list.</p>
+						<h2>{ tr(ctx, "history.today.h") }</h2>
+						<p>{ tr(ctx, "history.today.p", "market", market) }</p>
 					</div>
 				</div>
-				<section class="deal-list" aria-label="Today's Gesha coffees">
+				<section class="deal-list" aria-label={ tr(ctx, "history.today.aria") }>
 					for _, c := range today {
 						@productRow(c, labels)
 					}
@@ -497,13 +540,13 @@ templ HistoryGuide(p Page, today []Card, labels Labels) {
 			</section>
 		}
 		<section class="section" id="sources">
-			<h2>Sources</h2>
+			<h2>{ tr(ctx, "guides.sources_h") }</h2>
 			@sourceList(historySources)
-			<p class="note">Early coffee history mixes records with legend. Where a story is a legend, we say so; dates follow the sources above.</p>
+			<p class="note">{ tr(ctx, "history.note") }</p>
 		</section>
-		<nav class="next-cards" aria-label="More to read">
-			<a href="/guides/coffee-and-health"><span>Next guide</span><b>Coffee and your health: what the research says</b></a>
-			<a href="/guides/"><span>More to read</span><b>All coffee guides</b></a>
+		<nav class="next-cards" aria-label={ tr(ctx, "guides.more") }>
+			<a href={ templ.SafeURL(lp(ctx, "/guides/coffee-and-health")) }><span>{ tr(ctx, "guides.next") }</span><b>{ tr(ctx, "guides.health.title") }</b></a>
+			<a href={ templ.SafeURL(lp(ctx, "/guides/")) }><span>{ tr(ctx, "guides.more") }</span><b>{ tr(ctx, "guides.all_guides") }</b></a>
 		</nav>
 	}
 }

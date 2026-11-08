@@ -11,20 +11,15 @@ import (
 	"github.com/alparslanakbas/cupproof/internal/web/views"
 )
 
-// The guides: editorial pages in English for every market, so one address
-// each and no hreflang. Their text is in views/guides.templ; every fact there
-// was checked against the source it cites on 4 Nov 2026, and the design's
-// claims that the sources did not back were changed or dropped.
+// The guides: editorial pages, one for every market in each of the site's
+// languages ("/guides/", "/de/guides/"). Their text is in the catalog, their
+// shape in views/guides.templ; every fact was checked against the source it
+// cites on 4 Nov 2026, and the design's claims that the sources did not
+// back were changed or dropped.
 
 func (s *Server) guidesIndex(w http.ResponseWriter, r *http.Request) {
-	p := views.Page{
-		Title:       "Coffee guides: caffeine, health and coffee's history — CoffeeProof",
-		Lang:        "en",
-		Description: "Short reads on caffeine, coffee and health, and how coffee travelled the world, every fact linked to its source.",
-		Canonical:   s.SiteURL + "/guides/",
-		Nav:         nav(market.US, "guides"),
-	}
-	p = chrome(r, p, "/en-us/")
+	lang := i18n.Lang(r.Context())
+	p := s.localPage(r, "/guides/", views.Page{Title: i18n.T(lang, "guides.page_title"), Description: i18n.T(lang, "guides.desc")}, "guides")
 	s.render(w, r, http.StatusOK, views.GuidesIndex(p))
 }
 
@@ -85,42 +80,38 @@ func caffeineFrom(lang string, q url.Values) views.Caffeine {
 
 func (s *Server) healthGuide(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	c := caffeineFrom(i18n.Lang(r.Context()), q)
-	p := views.Page{
-		Title:       "Coffee and your health: what the research says — CoffeeProof",
-		Lang:        "en",
-		Description: "How much caffeine is too much, what a big 2017 review linked coffee with, unfiltered coffee and cholesterol, and a caffeine calculator, every claim linked to its source.",
-		Canonical:   s.SiteURL + "/guides/coffee-and-health",
+	lang := i18n.Lang(r.Context())
+	c := caffeineFrom(lang, q)
+	p := s.localPage(r, "/guides/coffee-and-health", views.Page{Title: i18n.T(lang, "health.page_title"),
+		Description: i18n.T(lang, "health.desc"),
 		NoIndex:     len(q) > 0, // a filled-in calculator is the same page
-		Nav:         nav(market.US, "guides"),
-	}
-	p = chrome(r, p, "/en-us/")
-	s.render(w, r, http.StatusOK, views.HealthGuide(p, c))
+	}, "guides")
+	// "Back to prices" leads to today's drops in the page's market.
+	m := market.LangMarket(lang)
+	drops := views.NavLink{Name: i18n.T(lang, "guides.todays_drops", "market", m.Short), URL: "/" + m.Code + "/?show=drops"}
+	s.render(w, r, http.StatusOK, views.HealthGuide(p, c, drops))
 }
 
-// historyGuide ends with coffees from today's US list whose name says Gesha
-// or Geisha: the variety behind the auction records, at a price a reader can
-// pay. The section is left out when there are none.
+// historyGuide ends with coffees from today's list whose name says Gesha or
+// Geisha: the variety behind the auction records, at a price a reader can
+// pay, in the page's market (the US in English). The section is left out
+// when there are none.
 func (s *Server) historyGuide(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
+	m := market.LangMarket(lang)
 	rows, err := s.Q.ListCoffees(r.Context(), db.ListCoffeesParams{
-		Market: market.US.Key, Kind: coffeeKind.name, PageSize: 2, Title: `ge(i)?sha`,
+		Market: m.Key, Kind: coffeeKind.name, PageSize: 2, Title: `ge(i)?sha`,
 	})
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	cards, err := s.cards(r.Context(), market.US, coffeeKind, rows)
+	cards, err := s.cards(r.Context(), m, coffeeKind, rows)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	p := views.Page{
-		Title:       "How coffee travelled the world — CoffeeProof",
-		Lang:        "en",
-		Description: "From Sufi communities in Yemen to the Panama auction records: a map, a timeline of 19 moments and the famous names on a coffee bag, every date linked to its source.",
-		Canonical:   s.SiteURL + "/guides/coffee-history",
-		Nav:         nav(market.US, "guides"),
-	}
-	p = chrome(r, p, "/en-us/")
-	s.render(w, r, http.StatusOK, views.HistoryGuide(p, cards, coffeeKind.labels(i18n.Source)))
+	p := s.localPage(r, "/guides/coffee-history", views.Page{Title: i18n.T(lang, "history.page_title"),
+		Description: i18n.T(lang, "history.desc")}, "guides")
+	s.render(w, r, http.StatusOK, views.HistoryGuide(p, cards, coffeeKind.labels(lang), m.Short))
 }

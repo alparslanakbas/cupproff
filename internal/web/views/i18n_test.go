@@ -53,6 +53,52 @@ func TestInfoPagesAreInTheCatalog(t *testing.T) {
 	}
 }
 
+// The guides build their ids from their tables.
+func TestGuidesAreInTheCatalog(t *testing.T) {
+	ids := []string{"year.late1400s"}
+	for _, s := range stories {
+		ids = append(ids, "story."+s.ID+".title", "story."+s.ID+".text", "place."+s.Place)
+	}
+	for _, e := range eras {
+		ids = append(ids, "era."+e.ID)
+		for _, m := range e.Moments {
+			ids = append(ids, "moment."+m.Year+".text", "place."+m.Place)
+		}
+	}
+	for _, n := range bagNames {
+		ids = append(ids, "bag."+n.ID+".name", "bag."+n.ID+".text", "bagkind."+n.Kind)
+		if n.LinkURL != "" {
+			ids = append(ids, "bag."+n.ID+".link")
+		}
+	}
+	for _, a := range answers {
+		ids = append(ids, "answer."+a.ID+".q", "answer."+a.ID+".a", a.Tag)
+	}
+	for _, c := range goodCards {
+		ids = append(ids, "health.good."+c.id+".h", "health.good."+c.id+".p")
+	}
+	for _, c := range badCards {
+		ids = append(ids, "health.bad."+c.id+".h", "health.bad."+c.id+".p")
+	}
+	for _, c := range carefulItems {
+		ids = append(ids, "health.careful."+c.id)
+	}
+	for _, m := range myths {
+		ids = append(ids, "health.myth."+m.id+".q", "health.myth."+m.id+".a")
+	}
+	for _, s := range []string{"li1", "li2", "li3"} {
+		ids = append(ids, "guides.write."+s)
+	}
+	for _, e := range healthToc {
+		ids = append(ids, e.name)
+	}
+	for _, id := range ids {
+		if !i18n.Has(i18n.Source, id) {
+			t.Errorf("English lacks %q", id)
+		}
+	}
+}
+
 // A page with language versions is at "/<lang>/…" in each of the site's
 // languages and at its own address in English; nothing else moves.
 func TestLocalPath(t *testing.T) {
@@ -61,7 +107,8 @@ func TestLocalPath(t *testing.T) {
 		{"fr", "/watchlist", "/fr/watchlist"},
 		{"en", "/about", "/about"},
 		{"de", "/en-us/", "/en-us/"},
-		{"de", "/guides/", "/guides/"}, // no German guides yet
+		{"de", "/guides/", "/de/guides/"},
+		{"pt", "/guides/coffee-and-health#filter", "/pt/guides/coffee-and-health#filter"},
 		{"es", "/calculators/brew-ratio", "/es/calculators/brew-ratio"},
 		{"es", "/calculators", "/calculators"}, // the redirect to "/calculators/" isn't a page
 		{"de", "/aboutx", "/aboutx"},

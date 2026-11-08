@@ -1,6 +1,11 @@
 package views
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/alparslanakbas/cupproof/internal/i18n"
+	"github.com/alparslanakbas/cupproof/internal/market"
+)
 
 // Page is what every page tells the layout about itself.
 type Page struct {
@@ -311,9 +316,9 @@ templ Layout(p Page, hero templ.Component) {
 						}
 						<p>{ tr(ctx, "footer.how_read_text") }</p>
 						<nav class="footer-regions" aria-label={ tr(ctx, "nav.regions") }>
-							<a href="/en-us/">US</a>
-							<a href="/en-gb/">UK</a>
-							<a href="/en-eu/">EU</a>
+							for _, m := range market.All {
+								<a href={ templ.SafeURL("/" + m.VersionIn(i18n.Lang(ctx)).Code + "/") }>{ tr(ctx, "market."+m.Region()+".short") }</a>
+							}
 						</nav>
 					</div>
 				</div>

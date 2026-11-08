@@ -37,7 +37,7 @@ func trh(ctx context.Context, id string, pairs ...string) templ.Component {
 // text is in the catalog, so a link never leads to a half-translated page.
 // A path ending in "/" stands for every page under it.
 var localPages = []string{"/how-it-works", "/about", "/contact", "/glossary", "/privacy", "/cookies", "/terms",
-	"/watchlist", "/compare", "/calculators/", "/which-coffee", "/black-friday", "/cheapest-coffee"}
+	"/watchlist", "/compare", "/calculators/", "/which-coffee", "/black-friday", "/cheapest-coffee", "/guides/"}
 
 // IsLocalPage says whether path (no language, no query) has language versions.
 func IsLocalPage(path string) bool {
