@@ -7,6 +7,7 @@
 package market
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/alparslanakbas/cupproof/internal/i18n"
@@ -71,6 +72,34 @@ var EU = Market{Key: "en-eu", Code: "en-eu", Lang: "en", Country: "DE", Currency
 
 // All lists the live markets, in the order the region selector shows them.
 var All = []Market{US, UK, EU}
+
+// Languages are the site's languages besides English, in the order the
+// markets list them: a language is on the site once a market speaks it.
+func Languages() []string {
+	var langs []string
+	for _, m := range All {
+		for _, v := range m.Variants {
+			if !slices.Contains(langs, v.Lang) {
+				langs = append(langs, v.Lang)
+			}
+		}
+	}
+	return langs
+}
+
+// LangMarket is the first market that speaks lang, in lang: the market a
+// page outside the markets (a guide, the watchlist) leads to. English is
+// the US, as it always was.
+func LangMarket(lang string) Market {
+	for _, m := range All {
+		for _, v := range m.Versions() {
+			if v.Language() == lang {
+				return v
+			}
+		}
+	}
+	return US
+}
 
 // ByCode finds a live market by its URL segment, in any of its languages.
 func ByCode(code string) (Market, bool) {

@@ -49,10 +49,25 @@ func TestCatalogsMatchEnglish(t *testing.T) {
 	}
 }
 
+// markup is a text's tags and link targets, in order: a text written out as
+// HTML (views.trh) must keep English's, whatever words move around them.
+var markup = regexp.MustCompile(`</?[a-z]+|href="[^"]*"`)
+
+func TestCatalogsKeepEnglishMarkup(t *testing.T) {
+	for id, src := range catalogs[Source] {
+		want := strings.Join(markup.FindAllString(src, -1), " ")
+		for lang, texts := range catalogs {
+			if s, ok := texts[id]; ok && strings.Join(markup.FindAllString(s, -1), " ") != want {
+				t.Errorf("%s: %q has markup %q, English %q", lang, id, markup.FindAllString(s, -1), want)
+			}
+		}
+	}
+}
+
 // asked finds the ids the code asks for by name, in Go (i18n.T, i18n.N) and
 // in the templates (tr, trn); an id built at run time ("currency."+code) is
 // checked by its caller's tests.
-var asked = regexp.MustCompile(`(?:i18n\.([TN])|\b(tr|trn))\(\s*[^,()]+,\s*"([^"]+)"\s*[,)]`)
+var asked = regexp.MustCompile(`(?:i18n\.([TN])|\b(tr|trn|trh))\(\s*[^,()]+,\s*"([^"]+)"\s*[,)]`)
 
 func TestCodeAsksOnlyForKnownIDs(t *testing.T) {
 	n := 0

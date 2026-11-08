@@ -1,7 +1,5 @@
 package views
 
-import "fmt"
-
 // pageHead is the band's heading of a page without a list: crumbs, title,
 // a line under it.
 templ pageHead(links []NavLink, title, lede string) {
@@ -20,30 +18,30 @@ templ pageHead(links []NavLink, title, lede string) {
 
 // Watchlist is the visitor's saved products, with today's prices.
 templ Watchlist(p Page, cards []Card, saved int) {
-	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Watchlist"}}, "Your watchlist",
-		"The products you saved, with today's price. The list lives in a cookie in this browser: no account, nothing sent to us but the products' addresses.")) {
+	@Layout(p, pageHead([]NavLink{{Name: tr(ctx, "nav.home"), URL: homeURL(p)}, {Name: tr(ctx, "nav.watchlist")}}, tr(ctx, "watch.title"),
+		tr(ctx, "watch.lede"))) {
 		if len(cards) == 0 {
 			<div class="card empty">
 				@icon("bookmark")
-				<h2>Nothing saved yet</h2>
-				<p>Open a product and choose "Add to watchlist". It stays here, in this browser, for a year.</p>
-				<a class="btn btn-primary" href="/">See today's deals</a>
+				<h2>{ tr(ctx, "watch.empty.h") }</h2>
+				<p>{ tr(ctx, "watch.empty.p", "button", tr(ctx, "product.add_watch")) }</p>
+				<a class="btn btn-primary" href={ templ.SafeURL(homeURL(p)) }>{ tr(ctx, "picks.see_deals") }</a>
 			</div>
 		} else {
-			<p class="list-note">{ fmt.Sprintf("%d saved", len(cards)) }</p>
-			<section class="deal-list" aria-label="Your watchlist">
+			<p class="list-note">{ trn(ctx, "watch.saved", int64(len(cards))) }</p>
+			<section class="deal-list" aria-label={ tr(ctx, "watch.title") }>
 				for _, c := range cards {
 					<div class="watch-item">
-						@productRow(c, Labels{Buy: "Go to store"})
+						@productRow(c, Labels{Buy: tr(ctx, "picks.go_store")})
 						<a class="watch-remove" href={ templ.SafeURL(c.WatchURL) } rel="nofollow">
 							@icon("x")
-							Remove
+							{ tr(ctx, "picks.remove") }
 						</a>
 					</div>
 				}
 			</section>
 			if saved > len(cards) {
-				<p class="list-note">{ fmt.Sprintf("%d saved products aren't sold in that market any more, so they aren't shown.", saved-len(cards)) }</p>
+				<p class="list-note">{ trn(ctx, "watch.gone", int64(saved-len(cards))) }</p>
 			}
 		}
 	}
@@ -51,21 +49,21 @@ templ Watchlist(p Page, cards []Card, saved int) {
 
 // Compare is up to four products side by side.
 templ Compare(p Page, cards []Card, clearURL string) {
-	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: "Compare"}}, "Compare",
-		"Up to four products side by side, with today's prices and what we measured. Pick them with Compare on any list.")) {
+	@Layout(p, pageHead([]NavLink{{Name: tr(ctx, "nav.home"), URL: homeURL(p)}, {Name: tr(ctx, "compare.title")}}, tr(ctx, "compare.title"),
+		tr(ctx, "compare.lede", "button", tr(ctx, "card.compare")))) {
 		if len(cards) == 0 {
 			<div class="card empty">
 				@icon("scales")
-				<h2>Nothing to compare yet</h2>
-				<p>Choose "Compare" on up to four products in any list.</p>
-				<a class="btn btn-primary" href="/">See today's deals</a>
+				<h2>{ tr(ctx, "compare.empty.h") }</h2>
+				<p>{ tr(ctx, "compare.empty.p", "button", tr(ctx, "card.compare")) }</p>
+				<a class="btn btn-primary" href={ templ.SafeURL(homeURL(p)) }>{ tr(ctx, "picks.see_deals") }</a>
 			</div>
 		} else {
 			<div class="compare-scroll">
 				<table class="compare-table">
 					<thead>
 						<tr>
-							<th scope="col"><span class="sr-only">Product</span></th>
+							<th scope="col"><span class="sr-only">{ tr(ctx, "compare.product") }</span></th>
 							for _, c := range cards {
 								<th scope="col">
 									<a class="compare-img" href={ templ.SafeURL(c.URL) }>
@@ -74,37 +72,37 @@ templ Compare(p Page, cards []Card, clearURL string) {
 										}
 									</a>
 									<a class="compare-name" href={ templ.SafeURL(c.URL) }>{ c.Title }</a>
-									<a class="compare-remove" href={ templ.SafeURL(c.CompareURL) } rel="nofollow">Remove</a>
+									<a class="compare-remove" href={ templ.SafeURL(c.CompareURL) } rel="nofollow">{ tr(ctx, "picks.remove") }</a>
 								</th>
 							}
 						</tr>
 					</thead>
 					<tbody>
-						@compareRow("Store", cards, func(c Card) string { return c.Roaster })
-						@compareRow("Market", cards, func(c Card) string { return c.Market })
-						@compareRow("Size", cards, func(c Card) string { return c.Size })
-						@compareRow("Price today", cards, func(c Card) string { return c.Price })
-						@compareRow("Per unit", cards, func(c Card) string { return orDash(c.PerUnit) })
-						@compareRow("Usual price", cards, func(c Card) string { return orDash(c.Usual) })
-						@compareRow("Lowest in 30 days", cards, func(c Card) string { return orDash(c.Low30) })
+						@compareRow(tr(ctx, "compare.row.store"), cards, func(c Card) string { return c.Roaster })
+						@compareRow(tr(ctx, "compare.row.market"), cards, func(c Card) string { return c.Market })
+						@compareRow(tr(ctx, "compare.row.size"), cards, func(c Card) string { return c.Size })
+						@compareRow(tr(ctx, "compare.row.price"), cards, func(c Card) string { return c.Price })
+						@compareRow(tr(ctx, "compare.row.per_unit"), cards, func(c Card) string { return orDash(c.PerUnit) })
+						@compareRow(tr(ctx, "compare.row.usual"), cards, func(c Card) string { return orDash(c.Usual) })
+						@compareRow(tr(ctx, "compare.row.low30"), cards, func(c Card) string { return orDash(c.Low30) })
 						<tr>
-							<th scope="row">Today</th>
+							<th scope="row">{ tr(ctx, "compare.row.today") }</th>
 							for _, c := range cards {
 								<td>
 									@dealBadge(c)
 									if !c.OutOfStock && c.RealDrop == 0 && c.StorePercent == 0 && !c.LowestIn30 && c.LowestSince == "" {
-										<span class="muted">No deal today</span>
+										<span class="muted">{ tr(ctx, "deal.none_today") }</span>
 									}
 								</td>
 							}
 						</tr>
-						@compareRow("Our reading", cards, func(c Card) string { return c.Reading })
+						@compareRow(tr(ctx, "compare.row.reading"), cards, func(c Card) string { return c.Reading })
 						<tr>
-							<th scope="row"><span class="sr-only">Store link</span></th>
+							<th scope="row"><span class="sr-only">{ tr(ctx, "compare.row.link") }</span></th>
 							for _, c := range cards {
 								<td>
 									<a class="btn btn-primary btn-block" href={ templ.SafeURL(c.BuyURL) } rel="nofollow">
-										Go to store
+										{ tr(ctx, "picks.go_store") }
 										@icon("external")
 									</a>
 								</td>
@@ -113,7 +111,7 @@ templ Compare(p Page, cards []Card, clearURL string) {
 					</tbody>
 				</table>
 			</div>
-			<p class="list-note"><a class="link" href={ templ.SafeURL(clearURL) } rel="nofollow">Clear the comparison</a></p>
+			<p class="list-note"><a class="link" href={ templ.SafeURL(clearURL) } rel="nofollow">{ tr(ctx, "compare.clear_all") }</a></p>
 		}
 	}
 }

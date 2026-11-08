@@ -127,13 +127,20 @@ func (s *Server) clearCompare(w http.ResponseWriter, r *http.Request) {
 
 // cardFor is today's card of a referenced product: the size its page opens
 // on, with the same rules as a listing row. ok is false when the product is
-// gone or no longer sold in that market.
+// gone or no longer sold in that market. The card speaks the page's
+// language, and leads to the market's version in it where there is one: a
+// German watchlist shows an EU coffee at /de-eu/, a US one at /en-us/.
 func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, error) {
 	parts := strings.Split(ref, "/")
 	m, ok := market.ByKey(parts[0])
-	lang := m.Language()
 	if !ok {
 		return views.Card{}, false, nil
+	}
+	lang := i18n.Lang(ctx)
+	for _, v := range m.Versions() {
+		if v.Language() == lang {
+			m = v
+		}
 	}
 	k := coffeeKind
 	if parts[1] == teaKind.segment {
@@ -236,8 +243,8 @@ func (s *Server) watchlist(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	p := views.Page{Title: "Your watchlist — CoffeeProof", Lang: "en", NoIndex: true, Nav: nav(market.US, "")}
-	p = chrome(r, p, "/"+market.US.Code+"/")
+	lang := i18n.Lang(r.Context())
+	p := s.localPage(r, "/watchlist", views.Page{Title: i18n.T(lang, "watch.page_title"), NoIndex: true}, "")
 	w.Header().Set("Cache-Control", "no-store")
 	s.render(w, r, http.StatusOK, views.Watchlist(p, cards, len(watched)))
 }
@@ -249,9 +256,9 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	p := views.Page{Title: "Compare — CoffeeProof", Lang: "en", NoIndex: true, Nav: nav(market.US, "")}
-	p = chrome(r, p, "/"+market.US.Code+"/")
+	lang := i18n.Lang(r.Context())
+	p := s.localPage(r, "/compare", views.Page{Title: i18n.T(lang, "compare.page_title"), NoIndex: true}, "")
 	p.Comparing = 0 // this page is the comparison: no bar pointing to it
 	w.Header().Set("Cache-Control", "no-store")
-	s.render(w, r, http.StatusOK, views.Compare(p, cards, "/compare/clear?back="+url.QueryEscape("/compare")))
+	s.render(w, r, http.StatusOK, views.Compare(p, cards, "/compare/clear?back="+url.QueryEscape(views.LocalPath(lang, "/compare"))))
 }

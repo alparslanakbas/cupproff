@@ -176,7 +176,7 @@ templ Layout(p Page, hero templ.Component) {
 								}
 							</nav>
 						}
-						<a class="hdr-btn quiz-btn" href="/which-coffee">
+						<a class="hdr-btn quiz-btn" href={ templ.SafeURL(lp(ctx, "/which-coffee")) }>
 							@icon("compass")
 							<span>{ tr(ctx, "nav.quiz") }</span>
 						</a>
@@ -220,7 +220,7 @@ templ Layout(p Page, hero templ.Component) {
 								</nav>
 							</details>
 						}
-						<a class="hdr-btn watch-btn" href="/watchlist">
+						<a class="hdr-btn watch-btn" href={ templ.SafeURL(lp(ctx, "/watchlist")) }>
 							@icon("bookmark")
 							<span>{ tr(ctx, "nav.watchlist") }</span>
 							if p.Watching > 0 {
@@ -260,7 +260,7 @@ templ Layout(p Page, hero templ.Component) {
 					<div class="wrap compare-row">
 						@icon("scales")
 						<span>{ tr(ctx, "compare.picked", "n", fmt.Sprint(p.Comparing)) }</span>
-						<a class="btn btn-primary" href="/compare">{ tr(ctx, "compare.now") }</a>
+						<a class="btn btn-primary" href={ templ.SafeURL(lp(ctx, "/compare")) }>{ tr(ctx, "compare.now") }</a>
 						<a class="compare-clear" href={ templ.SafeURL(p.ClearCompare) } rel="nofollow">{ tr(ctx, "compare.clear") }</a>
 					</div>
 				</div>
@@ -273,7 +273,7 @@ templ Layout(p Page, hero templ.Component) {
 							<span>CoffeeProof</span>
 						</a>
 						<p>{ tr(ctx, "footer.about") }</p>
-						<a class="footer-mail" href="/contact">
+						<a class="footer-mail" href={ templ.SafeURL(lp(ctx, "/contact")) }>
 							@icon("mail")
 							{ tr(ctx, "footer.contact_us") }
 						</a>
@@ -284,24 +284,24 @@ templ Layout(p Page, hero templ.Component) {
 							<a href={ templ.SafeURL(localURL(ctx, p, "/")) }>{ tr(ctx, "footer.todays_deals") }</a>
 							<a href={ templ.SafeURL(localURL(ctx, p, "/en-us/categories/")) }>{ tr(ctx, "nav.all_categories") }</a>
 							<a href={ templ.SafeURL(localURL(ctx, p, "/en-us/brands/")) }>{ tr(ctx, "nav.stores") }</a>
-							<a href="/guides/">{ tr(ctx, "footer.guides") }</a>
-							<a href="/glossary">{ tr(ctx, "footer.glossary") }</a>
-							<a href="/calculators/">{ tr(ctx, "nav.calculators") }</a>
-							<a href="/which-coffee">{ tr(ctx, "nav.which_coffee") }</a>
-							<a href="/black-friday">{ tr(ctx, "footer.black_friday") }</a>
-							<a href="/cheapest-coffee">{ tr(ctx, "footer.cheapest") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/guides/")) }>{ tr(ctx, "footer.guides") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/glossary")) }>{ tr(ctx, "footer.glossary") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/calculators/")) }>{ tr(ctx, "nav.calculators") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/which-coffee")) }>{ tr(ctx, "nav.which_coffee") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/black-friday")) }>{ tr(ctx, "footer.black_friday") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/cheapest-coffee")) }>{ tr(ctx, "footer.cheapest") }</a>
 						</nav>
 					</div>
 					<div>
 						<h2>{ tr(ctx, "common.transparency") }</h2>
 						<nav class="footer-nav">
-							<a href="/how-it-works">{ tr(ctx, "footer.how_it_works") }</a>
-							<a href="/about">{ tr(ctx, "footer.about_us") }</a>
-							<a href="/contact">{ tr(ctx, "footer.contact") }</a>
-							<a href="/privacy">{ tr(ctx, "footer.privacy") }</a>
-							<a href="/cookies">{ tr(ctx, "footer.cookies") }</a>
-							<a href="/terms">{ tr(ctx, "footer.terms") }</a>
-							<a href="/watchlist">{ tr(ctx, "footer.my_watchlist") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/how-it-works")) }>{ tr(ctx, "footer.how_it_works") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/about")) }>{ tr(ctx, "footer.about_us") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/contact")) }>{ tr(ctx, "footer.contact") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/privacy")) }>{ tr(ctx, "footer.privacy") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/cookies")) }>{ tr(ctx, "footer.cookies") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/terms")) }>{ tr(ctx, "footer.terms") }</a>
+							<a href={ templ.SafeURL(lp(ctx, "/watchlist")) }>{ tr(ctx, "footer.my_watchlist") }</a>
 						</nav>
 					</div>
 					<div>

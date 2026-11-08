@@ -77,10 +77,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{market}/categories/{$}", s.categoriesPage)
 	// The sister sites' other pages (4 Nov 2026). Literal paths: ServeMux
 	// prefers them to the market patterns.
+	//
+	// local registers such a page and, when it has language versions, the
+	// version in each of the site's other languages: "/about", "/de/about".
+	// The language is written out, not a {lang} wildcard: "/{lang}/about"
+	// would clash with "/static/{file}" (both match "/static/about").
+	local := func(path string, h http.HandlerFunc) {
+		mux.HandleFunc("GET "+path, h)
+		if views.IsLocalPage(path) {
+			for _, lang := range market.Languages() {
+				mux.HandleFunc("GET /"+lang+path, h)
+			}
+		}
+	}
 	mux.HandleFunc("GET /theme/{mode}", s.setTheme)
-	mux.HandleFunc("GET /watchlist", s.watchlist)
+	local("/watchlist", s.watchlist)
 	mux.HandleFunc("GET /watchlist/toggle", s.toggle(watchCookie, maxWatch))
-	mux.HandleFunc("GET /compare", s.compare)
+	local("/compare", s.compare)
 	mux.HandleFunc("GET /compare/toggle", s.toggle(compareCookie, maxCompare))
 	mux.HandleFunc("GET /compare/clear", s.clearCompare)
 	mux.HandleFunc("GET /calculators", func(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /black-friday", s.blackFriday)
 	mux.HandleFunc("GET /cheapest-coffee", s.cheapest)
 	for slug := range infoPages {
-		mux.HandleFunc("GET /"+slug, s.info(slug))
+		local("/"+slug, s.info(slug))
 	}
 	// The guides are one set for every market. These patterns are narrower
 	// than the market ones above, so ServeMux prefers them.
@@ -275,9 +288,9 @@ func nav(m market.Market, current string) []views.NavLink {
 	links := kindLinks(m, current)
 	links = append(links,
 		views.NavLink{Name: i18n.T(lang, "nav.brands"), URL: "/" + m.Code + "/brands/", Current: current == "brands", Icon: "store"},
-		views.NavLink{Name: i18n.T(lang, "nav.which_coffee"), URL: "/which-coffee", Current: current == "quiz"},
-		views.NavLink{Name: i18n.T(lang, "nav.calculators"), URL: "/calculators/", Current: current == "calculators"},
-		views.NavLink{Name: i18n.T(lang, "nav.guides"), URL: "/guides/", Current: current == "guides", Icon: "book"})
+		views.NavLink{Name: i18n.T(lang, "nav.which_coffee"), URL: views.LocalPath(lang, "/which-coffee"), Current: current == "quiz"},
+		views.NavLink{Name: i18n.T(lang, "nav.calculators"), URL: views.LocalPath(lang, "/calculators/"), Current: current == "calculators"},
+		views.NavLink{Name: i18n.T(lang, "nav.guides"), URL: views.LocalPath(lang, "/guides/"), Current: current == "guides", Icon: "book"})
 	return links
 }
 
@@ -759,7 +772,9 @@ type thing struct {
 func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	// The theme, watchlist and comparison switches are personal links, not pages.
-	fmt.Fprintf(w, "User-agent: *\nDisallow: /internal/\nDisallow: /theme/\nDisallow: /watchlist\nDisallow: /compare\n\nSitemap: %s/sitemap.xml\n", s.SiteURL)
+	// "/*/watchlist" is the same switch in another language ("/de/watchlist").
+	fmt.Fprintf(w, "User-agent: *\nDisallow: /internal/\nDisallow: /theme/\nDisallow: /watchlist\nDisallow: /compare\n"+
+		"Disallow: /*/watchlist\nDisallow: /*/compare\n\nSitemap: %s/sitemap.xml\n", s.SiteURL)
 }
 
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
@@ -812,6 +827,12 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, g := range pages {
 		fmt.Fprintf(&b, "<url><loc>%s%s</loc></url>\n", s.SiteURL, g)
+		// The page in each of the site's other languages, where it has them.
+		if views.IsLocalPage(g) {
+			for _, lang := range market.Languages() {
+				fmt.Fprintf(&b, "<url><loc>%s%s</loc></url>\n", s.SiteURL, views.LocalPath(lang, g))
+			}
+		}
 	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -867,6 +888,9 @@ func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
 	seg, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
 	if v, ok := market.ByCode(seg); ok && v.Language() != i18n.Source {
 		m, home = v, "/"+v.Code+"/"
+	} else if lang, _ := views.SplitLang(r.URL.Path); lang != i18n.Source {
+		m = market.LangMarket(lang)
+		home = "/" + m.Code + "/"
 	}
 	p := views.Page{Title: i18n.T(m.Language(), "notfound.page_title"), Lang: m.Lang, NoIndex: true, Nav: nav(m, ""),
 		MarketBase: home}
@@ -903,16 +927,40 @@ func cacheFor(d time.Duration, h http.Handler) http.Handler {
 	})
 }
 
-// withLang renders a market's pages in the language their address names
-// (/de-eu/…); every other page is English.
+// withLang renders a page in the language its address names: a market's
+// (/de-eu/…) or, for a page outside the markets, the language alone
+// (/de/about). Every other page is English.
 func withLang(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seg, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
 		if m, ok := market.ByCode(seg); ok && m.Language() != i18n.Source {
 			r = r.WithContext(i18n.WithLang(r.Context(), m.Language()))
+		} else if lang, _ := views.SplitLang(r.URL.Path); lang != i18n.Source {
+			r = r.WithContext(i18n.WithLang(r.Context(), lang))
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// localPage is the frame of a page outside the markets (an information
+// page, the watchlist) in the request's language: its address and
+// hreflangs in every language it has, and the menu, search and home of the
+// first market that speaks it. base is its English address: "/about".
+func (s *Server) localPage(r *http.Request, base string, p views.Page, current string) views.Page {
+	lang := i18n.Lang(r.Context())
+	m := market.LangMarket(lang)
+	p.Lang, p.Nav = lang, nav(m, current)
+	p.Canonical = s.SiteURL + views.LocalPath(lang, base)
+	if lang != i18n.Source {
+		p.MarketBase = "/" + m.Code + "/"
+	}
+	if views.IsLocalPage(base) {
+		for _, l := range append([]string{i18n.Source}, market.Languages()...) {
+			p.Alternates = append(p.Alternates, views.Alternate{Lang: l, URL: s.SiteURL + views.LocalPath(l, base)})
+		}
+		p.Alternates = append(p.Alternates, views.Alternate{Lang: "x-default", URL: s.SiteURL + base})
+	}
+	return chrome(r, p, "/"+m.Code+"/")
 }
 
 // inMarket is "in the European Union" as lang says it, for the headings and
@@ -922,23 +970,29 @@ func inMarket(lang string, m market.Market) string {
 }
 
 // siteLanguages is the language choice of a page outside the markets (the
-// home page, guides, tools, a 404): English is the page itself, another
-// language leads to the first market that has it.
+// home page, guides, tools, a 404). A page with language versions (see
+// views.LocalPath) leads to itself in each language; on any other page
+// English is the page itself, and another language leads to the first
+// market that has it.
 func siteLanguages(ctx context.Context, path string) []views.LangLink {
 	cur := i18n.Lang(ctx)
+	_, base := views.SplitLang(path)
+	base, _, _ = strings.Cut(base, "?")
+	local := views.IsLocalPage(base)
 	en := views.LangLink{Lang: i18n.Source, Name: i18n.T(i18n.Source, "lang.name"), URL: "/", Current: cur == i18n.Source}
-	if en.Current {
+	switch {
+	case local:
+		en.URL = localPath(base)
+	case en.Current:
 		en.URL = localPath(path)
 	}
-	links, seen := []views.LangLink{en}, map[string]bool{i18n.Source: true}
-	for _, m := range market.All {
-		for _, v := range m.Versions() {
-			if lang := v.Language(); !seen[lang] {
-				seen[lang] = true
-				links = append(links, views.LangLink{Lang: lang, Name: i18n.T(lang, "lang.name"), URL: "/" + v.Code + "/",
-					Current: lang == cur})
-			}
+	links := []views.LangLink{en}
+	for _, lang := range market.Languages() {
+		url := "/" + market.LangMarket(lang).Code + "/"
+		if local {
+			url = views.LocalPath(lang, localPath(base))
 		}
+		links = append(links, views.LangLink{Lang: lang, Name: i18n.T(lang, "lang.name"), URL: url, Current: lang == cur})
 	}
 	return links
 }

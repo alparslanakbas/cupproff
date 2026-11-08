@@ -1,6 +1,6 @@
 package views
 
-import "fmt"
+import "github.com/alparslanakbas/cupproof/internal/i18n"
 
 // SiteFacts are the live numbers some information pages show.
 type SiteFacts struct {
@@ -10,7 +10,7 @@ type SiteFacts struct {
 
 // Info is one of the information pages, by its slug.
 templ Info(p Page, slug, title string, f SiteFacts) {
-	@Layout(p, pageHead([]NavLink{{Name: "Home", URL: "/"}, {Name: title}}, title, infoLede(slug))) {
+	@Layout(p, pageHead([]NavLink{{Name: tr(ctx, "nav.home"), URL: homeURL(p)}, {Name: title}}, title, tr(ctx, "info."+slug+".lede"))) {
 		<article class="prose card">
 			switch slug {
 				case "how-it-works":
@@ -22,90 +22,51 @@ templ Info(p Page, slug, title string, f SiteFacts) {
 				case "glossary":
 					@glossary()
 				case "privacy":
-					@privacy()
+					@sections("privacy", privacySections)
 				case "cookies":
 					@cookies()
 				case "terms":
-					@terms()
+					@sections("terms", termsSections)
 			}
 		</article>
 	}
 }
 
-func infoLede(slug string) string {
-	switch slug {
-	case "how-it-works":
-		return "Every price here comes from the store's own site, read once a day. This is how those readings become the badges you see."
-	case "about":
-		return "A price history for independent coffee roasters and tea houses, so a sale can be checked before you buy."
-	case "contact":
-		return "Questions, a wrong price, a store to add or leave out: here is how to reach us."
-	case "glossary":
-		return "The coffee, tea and price words used on this site, in a sentence or two each."
-	case "privacy":
-		return "What we keep about visitors, and for how long. Last updated 5 November 2026."
-	case "cookies":
-		return "The cookies this site can set, all for choices you make. Last updated 5 November 2026."
-	case "terms":
-		return "The terms for using CoffeeProof. Last updated 5 November 2026."
-	}
-	return ""
-}
-
 // The texts below say only what the site does: they were checked against
-// it as it runs (5 Nov 2026). Change the site, change the text.
+// it as it runs (5 Nov 2026). Change the site, change the text, in every
+// language. Each part is "<page>.<part>.h" and "<page>.<part>.p" in the
+// catalog; the parts' order is here.
+
+var howSteps = []string{"read", "keep", "usual", "green", "amber", "converted", "list", "categories"}
+
 templ howItWorks() {
 	<ol class="steps">
-		<li>
-			<h2>We read prices every day</h2>
-			<p>Once a day we read the public catalog of each roaster's and tea house's own online shop, as a buyer in the US, the UK or the EU sees it. Our crawler is shared with our sister sites: it calls itself wheyproofbot, signs its requests and follows each store's robots.txt. <a class="link" href="https://www.wheyproof.com/bot">More about the crawler</a>.</p>
-		</li>
-		<li>
-			<h2>We keep every price</h2>
-			<p>Each size of each product has its own price history, from the first day we saw it.</p>
-		</li>
-		<li>
-			<h2>We find the usual price</h2>
-			<p>A size's usual price is the highest price it sold for on at least 7 of the last 30 days. A price that lasted only a few days can't become the usual price.</p>
-		</li>
-		<li>
-			<h2>Green is a real drop</h2>
-			<p>Today's price is under the usual price. When no day in the last 30 was cheaper, it's the lowest in 30 days; with a longer history, the lowest since a date.</p>
-		</li>
-		<li>
-			<h2>Amber is the store's own sale</h2>
-			<p>When a store shows a crossed-out "was" price, we show it in amber and don't count it as a drop. A "was" price is the store's claim; the price history is the proof.</p>
-		</li>
-		<li>
-			<h2>Converted prices need the store's own drop</h2>
-			<p>Some stores convert their prices for other countries. A converted price can move with the exchange rate alone, so it counts as a drop only when the store's price in its own currency dropped too.</p>
-		</li>
-		<li>
-			<h2>What a list shows</h2>
-			<p>Products in stock today, each by one size: a size with a real drop first, then one on sale, then the smallest bag. An offer we haven't seen for 48 hours leaves the list.</p>
-		</li>
-		<li>
-			<h2>Categories come from names</h2>
-			<p>We sort products into categories by their names: an espresso is a coffee its roaster calls espresso. A product can be in more than one category.</p>
-		</li>
+		for _, s := range howSteps {
+			<li>
+				<h2>{ tr(ctx, "how."+s+".h") }</h2>
+				<p>
+					@trh(ctx, "how."+s+".p")
+				</p>
+			</li>
+		}
 	</ol>
 }
 
 templ about(f SiteFacts) {
-	<p>CoffeeProof follows the prices of independent coffee roasters and tea houses in the US, the UK and the EU. It tells a real price drop, measured against each product's own price history, from a store's own sale.</p>
+	<p>{ tr(ctx, "about.p") }</p>
 	if f.Stores > 0 {
 		<div class="fact-row">
-			<div class="stat"><p class="stat-label">Stores we read</p><p class="stat-value">{ fmt.Sprint(f.Stores) }</p></div>
-			<div class="stat"><p class="stat-label">Offers in stock today</p><p class="stat-value">{ fmt.Sprint(f.Listed) }</p><p class="stat-note">across the three markets</p></div>
+			<div class="stat"><p class="stat-label">{ tr(ctx, "about.stores") }</p><p class="stat-value">{ i18n.Number(i18n.Lang(ctx), int64(f.Stores)) }</p></div>
+			<div class="stat"><p class="stat-label">{ tr(ctx, "about.offers") }</p><p class="stat-value">{ i18n.Number(i18n.Lang(ctx), f.Listed) }</p><p class="stat-note">{ tr(ctx, "about.offers_note") }</p></div>
 		</div>
 	}
-	<h2>Independent</h2>
-	<p>CoffeeProof isn't a store and doesn't sell coffee or tea. Every price links to the store's own site, where purchases happen.</p>
-	<h2>Sister sites</h2>
-	<p><a class="link" href="https://www.wheyproof.com">WheyProof</a> (supplements in the US and the UK) and Protein Avcısı (supplements in Turkey) work the same way, on the same server.</p>
-	<h2>Since</h2>
-	<p>We started reading coffee and tea prices in October 2026; the site opened on 4 November 2026.</p>
-	<p><a class="link" href="/how-it-works">How it works</a> · <a class="link" href="/contact">Contact</a></p>
+	for _, s := range []string{"independent", "sisters", "since"} {
+		<h2>{ tr(ctx, "about."+s+".h") }</h2>
+		<p>
+			@trh(ctx, "about."+s+".p")
+		</p>
+	}
+	<p><a class="link" href={ templ.SafeURL(lp(ctx, "/how-it-works")) }>{ tr(ctx, "footer.how_it_works") }</a> · <a class="link" href={ templ.SafeURL(lp(ctx, "/contact")) }>{ tr(ctx, "footer.contact") }</a></p>
 }
 
 templ contact() {
@@ -113,96 +74,67 @@ templ contact() {
 		@icon("mail")
 		<a class="link" href="mailto:support@wheyproof.com">support@wheyproof.com</a>
 	</p>
-	<p>CoffeeProof shares an inbox with its sister site WheyProof.</p>
-	<h2>A wrong price</h2>
-	<p>Send us the product's page here. Prices are read once a day, so a change on the store's site shows up after the next reading.</p>
-	<h2>Your store</h2>
-	<p>If you run a store and want it added or left out, write to us. Our crawler also follows your robots.txt: <a class="link" href="https://www.wheyproof.com/bot">how to block it</a>.</p>
-	<h2>Anything else</h2>
-	<p>Ideas, questions, a guide you'd like: the same address.</p>
+	<p>{ tr(ctx, "contact.shared") }</p>
+	for _, s := range []string{"wrong", "store", "else"} {
+		<h2>{ tr(ctx, "contact."+s+".h") }</h2>
+		<p>
+			@trh(ctx, "contact."+s+".p")
+		</p>
+	}
+}
+
+// glossaryGroups are the glossary's sections and their terms, in order:
+// "glossary.<term>.t" is a term, "glossary.<term>.d" its definition.
+var glossaryGroups = []struct {
+	head  string
+	terms []string
+}{
+	{"kind.coffee.nav", []string{"arabica", "robusta", "single_origin", "blend", "washed", "natural", "honey", "roast_level",
+		"espresso_roast", "decaf", "gesha", "whole_bean"}},
+	{"kind.tea.nav", []string{"camellia", "black", "green", "oolong", "white", "puerh", "matcha", "chai", "herbal"}},
+	{"glossary.prices", []string{"usual", "real_drop", "lowest30", "store_sale", "per_unit"}},
 }
 
 templ glossary() {
-	<h2>Coffee</h2>
-	<dl class="terms">
-		<div><dt>Arabica</dt><dd>The coffee species most specialty coffee comes from; it grows best at altitude.</dd></div>
-		<div><dt>Robusta</dt><dd>A hardier coffee species with more caffeine, often used in espresso blends and instant coffee.</dd></div>
-		<div><dt>Single origin</dt><dd>Coffee from one country, region or farm, named after where it grew.</dd></div>
-		<div><dt>Blend</dt><dd>Coffees from several origins, mixed by the roaster for a steady taste.</dd></div>
-		<div><dt>Washed process</dt><dd>The fruit is removed from the bean before drying.</dd></div>
-		<div><dt>Natural process</dt><dd>The whole coffee cherry dries with the bean inside, before the fruit is removed.</dd></div>
-		<div><dt>Honey process</dt><dd>The skin is removed but some of the sticky fruit is left on the bean while it dries.</dd></div>
-		<div><dt>Roast level</dt><dd>How long and how hot the beans were roasted: light, medium or dark.</dd></div>
-		<div><dt>Espresso roast</dt><dd>A coffee its roaster roasts or recommends for espresso.</dd></div>
-		<div><dt>Decaf</dt><dd>Coffee with most of its caffeine removed; US rules ask for at least 97%.</dd></div>
-		<div><dt>Gesha (Geisha)</dt><dd>A coffee variety first found in Ethiopia, known from Panama's auction records.</dd></div>
-		<div><dt>Whole bean, ground</dt><dd>Beans as roasted, or ground for a brew method.</dd></div>
-	</dl>
-	<h2>Tea</h2>
-	<dl class="terms">
-		<div><dt>Camellia sinensis</dt><dd>The tea plant. Black, green, oolong, white and pu-erh teas all come from it.</dd></div>
-		<div><dt>Black tea</dt><dd>Tea whose leaves are fully oxidised.</dd></div>
-		<div><dt>Green tea</dt><dd>Tea heated soon after picking, so the leaves don't oxidise.</dd></div>
-		<div><dt>Oolong</dt><dd>Tea whose leaves are partly oxidised, between green and black.</dd></div>
-		<div><dt>White tea</dt><dd>Buds and young leaves, withered and dried with little handling.</dd></div>
-		<div><dt>Pu-erh</dt><dd>A tea from Yunnan, China, often pressed into cakes and aged.</dd></div>
-		<div><dt>Matcha</dt><dd>Shade-grown green tea ground into a powder and whisked into water.</dd></div>
-		<div><dt>Chai</dt><dd>Tea brewed with spices, or a spice blend for it; usually based on black tea.</dd></div>
-		<div><dt>Herbal tea</dt><dd>An infusion of herbs, flowers, fruit or roots, such as rooibos or chamomile; not from the tea plant.</dd></div>
-	</dl>
-	<h2>Prices</h2>
-	<dl class="terms">
-		<div><dt>Usual price</dt><dd>The highest price a size sold for on at least 7 of the last 30 days.</dd></div>
-		<div><dt>Real drop</dt><dd>Today's price under the usual price, by our own price history.</dd></div>
-		<div><dt>Lowest in 30 days</dt><dd>A real drop with no cheaper day in the last 30.</dd></div>
-		<div><dt>Store sale</dt><dd>A price the store shows against its own crossed-out "was" price; we don't count it as a drop.</dd></div>
-		<div><dt>Per kg, per 100 g</dt><dd>The price for the same weight, to compare bags of different sizes: per kg for coffee, per 100 g for tea.</dd></div>
-	</dl>
+	for _, g := range glossaryGroups {
+		<h2>{ tr(ctx, g.head) }</h2>
+		<dl class="terms">
+			for _, t := range g.terms {
+				<div><dt>{ tr(ctx, "glossary."+t+".t") }</dt><dd>{ tr(ctx, "glossary."+t+".d") }</dd></div>
+			}
+		</dl>
+	}
 }
 
-templ privacy() {
-	<h2>Who we are</h2>
-	<p>CoffeeProof (coffeeproof.org). Questions about this policy: <a class="link" href="mailto:support@wheyproof.com">support@wheyproof.com</a>.</p>
-	<h2>What we don't collect</h2>
-	<p>There are no accounts, no sign-up and no newsletter, and our pages carry no analytics or advertising trackers.</p>
-	<h2>Our server's access log</h2>
-	<p>Like most websites, our server keeps a log of the requests it answers: the IP address, the time, the page asked for (including what is in its address, such as a search or a calculator's numbers), the browser's user agent and the page you came from. We use it to keep the site running and safe, and it is deleted after 90 days. The server is in Frankfurt, Germany.</p>
-	<h2>Cloudflare</h2>
-	<p>Our pages are delivered through Cloudflare, which handles visitors' requests, including their IP addresses, to deliver and protect the site.</p>
-	<h2>Product photos</h2>
-	<p>Product photos load from each store's own image server (for most stores, Shopify's), so your browser asks that server for them. Our font is served from our own server.</p>
-	<h2>Cookies</h2>
-	<p>We set a cookie only when you use a control that needs one: the theme, the watchlist and the comparison. See the <a class="link" href="/cookies">cookie policy</a>.</p>
-	<h2>Your rights</h2>
-	<p>You can ask us what we hold about you, and to delete it. In the access log we can only find entries by IP address and time.</p>
+var privacySections = []string{"who", "none", "log", "cloudflare", "photos", "cookies", "rights"}
+
+var termsSections = []string{"prices", "badges", "buying", "names", "guides", "changes"}
+
+// sections is a legal page: headings and paragraphs, in order. A paragraph
+// may link another page: {cookies} and {contact} are their addresses in the
+// page's language.
+templ sections(page string, parts []string) {
+	for _, s := range parts {
+		<h2>{ tr(ctx, page+"."+s+".h") }</h2>
+		<p>
+			@trh(ctx, page+"."+s+".p", "cookies", lp(ctx, "/cookies"), "contact", lp(ctx, "/contact"))
+		</p>
+	}
 }
+
+var cookieRows = []string{"theme", "watch", "compare"}
 
 templ cookies() {
 	<div class="compare-scroll">
 		<table class="compare-table cookie-table">
-			<thead><tr><th scope="col">Cookie</th><th scope="col">What it keeps</th><th scope="col">Set when</th><th scope="col">Kept for</th></tr></thead>
+			<thead><tr><th scope="col">{ tr(ctx, "cookies.col.cookie") }</th><th scope="col">{ tr(ctx, "cookies.col.what") }</th><th scope="col">{ tr(ctx, "cookies.col.when") }</th><th scope="col">{ tr(ctx, "cookies.col.kept") }</th></tr></thead>
 			<tbody>
-				<tr><th scope="row">theme</th><td>Your light or dark choice</td><td>You pick a theme in the header</td><td>1 year</td></tr>
-				<tr><th scope="row">watch</th><td>The addresses of the products on your watchlist</td><td>You add a product to the watchlist</td><td>1 year</td></tr>
-				<tr><th scope="row">compare</th><td>Up to four products to compare</td><td>You choose Compare on a product</td><td>1 year</td></tr>
+				for _, c := range cookieRows {
+					<tr><th scope="row">{ c }</th><td>{ tr(ctx, "cookies."+c+".what") }</td><td>{ tr(ctx, "cookies."+c+".when") }</td><td>{ tr(ctx, "cookies.year") }</td></tr>
+				}
 			</tbody>
 		</table>
 	</div>
-	<p>All three are this site's own, used only by it, and never for tracking. Choosing "system" for the theme, or emptying the watchlist or the comparison, deletes the cookie. Without them the site works the same; it just won't remember those choices.</p>
-	<p>We set no analytics or advertising cookies. Cloudflare, which delivers the site, may set its own cookies to protect it from bots.</p>
-}
-
-templ terms() {
-	<h2>Prices</h2>
-	<p>We read prices once a day from each store's own site. The store's site has the final word on the price, the stock and the shipping; check it before you buy.</p>
-	<h2>Badges</h2>
-	<p>A badge is our reading of our own price history, not a statement by the store.</p>
-	<h2>Buying</h2>
-	<p>CoffeeProof isn't a store. A purchase, its delivery and any return are between you and the store.</p>
-	<h2>Names and photos</h2>
-	<p>Product names and photos belong to their owners and are shown to identify the products.</p>
-	<h2>Guides and calculators</h2>
-	<p>They are general information, not medical advice.</p>
-	<h2>Changes</h2>
-	<p>We may change the site and these terms; the date at the top says when they last changed. Questions: <a class="link" href="/contact">contact</a>.</p>
+	<p>{ tr(ctx, "cookies.p1") }</p>
+	<p>{ tr(ctx, "cookies.p2") }</p>
 }

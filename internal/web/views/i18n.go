@@ -3,11 +3,13 @@ package views
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/a-h/templ"
 
 	"github.com/alparslanakbas/cupproof/internal/i18n"
+	"github.com/alparslanakbas/cupproof/internal/market"
 )
 
 // tr is the catalog text id in the language the page renders in: the
@@ -19,6 +21,66 @@ func tr(ctx context.Context, id string, pairs ...string) string {
 // trn is tr for a counted text.
 func trn(ctx context.Context, id string, n int64, pairs ...string) string {
 	return i18n.N(i18n.Lang(ctx), id, n, pairs...)
+}
+
+// trh is tr for a text that carries its own markup: a link or a bold
+// phrase inside a sentence, where the words around it move with the
+// language. The catalog is ours, so it is written out as it is; the
+// catalog test checks that every language keeps English's tags and links.
+func trh(ctx context.Context, id string, pairs ...string) templ.Component {
+	return templ.Raw(tr(ctx, id, pairs...))
+}
+
+// localPages are the pages outside the markets that have a version in each
+// of the site's languages, at "/de/about": the information pages, the
+// watchlist and the comparison. A page joins only once all of its text is
+// in the catalog, so a link never leads to a half-translated page.
+var localPages = []string{"/how-it-works", "/about", "/contact", "/glossary", "/privacy", "/cookies", "/terms",
+	"/watchlist", "/compare"}
+
+// IsLocalPage says whether path (no language, no query) has language versions.
+func IsLocalPage(path string) bool {
+	path, _, _ = strings.Cut(path, "#")
+	path, _, _ = strings.Cut(path, "?")
+	for _, p := range localPages {
+		if path == p || (strings.HasSuffix(p, "/") && strings.HasPrefix(path, p)) {
+			return true
+		}
+	}
+	return false
+}
+
+// LocalPath is path's address in lang: "/about" is "/de/about" in German.
+// English, and pages without language versions, keep their address.
+func LocalPath(lang, path string) string {
+	if lang == i18n.Source || !IsLocalPage(path) {
+		return path
+	}
+	return "/" + lang + path
+}
+
+// SplitLang takes a language off an address: "/de/about" is "de" and
+// "/about". Anything else is English, as it is.
+func SplitLang(path string) (lang, rest string) {
+	seg, tail, ok := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	if ok && slices.Contains(market.Languages(), seg) {
+		return seg, "/" + tail
+	}
+	return i18n.Source, path
+}
+
+// lp is LocalPath in the page's language, for a template's links.
+func lp(ctx context.Context, path string) string {
+	return LocalPath(i18n.Lang(ctx), path)
+}
+
+// homeURL is where a page's "Home" leads: its market's list in its
+// language, or the home page.
+func homeURL(p Page) string {
+	if p.MarketBase != "" {
+		return p.MarketBase
+	}
+	return "/"
 }
 
 // localURL sends a footer link to the page's own market and language.
