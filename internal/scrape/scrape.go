@@ -123,11 +123,12 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 	}
 	read, check, skipped := shopify.MarketsFor(meta, markets)
 	for _, m := range check {
-		cur, err := r.presented(ctx, &client, slug, baseURL, m, rules)
+		cur, err := r.presented(ctx, r.Q, &client, slug, baseURL, m, rules)
 		switch {
 		case err != nil:
 			// A refusal counts for the breaker; anything else only skips
-			// this market for today.
+			// this market for today. A challenged check with an earlier
+			// answer does not get here: presented keeps that answer.
 			if errors.Is(err, shopify.ErrRateLimited) || errors.Is(err, shopify.ErrChallenged) {
 				return fmt.Errorf("%s currency check: %w", m.Key, err)
 			}
@@ -164,11 +165,18 @@ func (r *Runner) one(ctx context.Context, slug, baseURL string, markets []market
 // Stores rarely change their markets, and the check reads a whole home page.
 const currencyCheckDays = 7
 
+// currencyStore is the part of the database presented uses: *db.Queries in
+// a run, a map in tests.
+type currencyStore interface {
+	PresentedCurrency(ctx context.Context, arg db.PresentedCurrencyParams) (string, error)
+	SavePresentedCurrency(ctx context.Context, arg db.SavePresentedCurrencyParams) error
+}
+
 // presented returns the currency the store shows in m's country: from the
 // last week's check if there is one, otherwise by reading its home page as a
 // buyer there (when robots.txt allows) and keeping the answer.
-func (r *Runner) presented(ctx context.Context, client *shopify.Client, slug, baseURL string, m market.Market, rules robots.All) (string, error) {
-	cur, err := r.Q.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Key, MaxAgeDays: currencyCheckDays})
+func (r *Runner) presented(ctx context.Context, store currencyStore, client *shopify.Client, slug, baseURL string, m market.Market, rules robots.All) (string, error) {
+	cur, err := store.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Key, MaxAgeDays: currencyCheckDays})
 	if err == nil {
 		return cur, nil
 	}
@@ -179,14 +187,47 @@ func (r *Runner) presented(ctx context.Context, client *shopify.Client, slug, ba
 		return "", fmt.Errorf("robots.txt disallows %s", path)
 	}
 	cur, err = client.PresentedCurrency(ctx, baseURL, m)
+	if errors.Is(err, shopify.ErrChallenged) {
+		return r.keepLastAnswer(ctx, store, slug, m, err)
+	}
 	if err != nil {
 		return "", err
 	}
-	if err := r.Q.SavePresentedCurrency(ctx, db.SavePresentedCurrencyParams{Slug: slug, Market: m.Key, Currency: cur}); err != nil {
+	if err := store.SavePresentedCurrency(ctx, db.SavePresentedCurrencyParams{Slug: slug, Market: m.Key, Currency: cur}); err != nil {
 		return "", err
 	}
 	r.Log.Info("currency checked", "roaster", slug, "market", m.Key, "presents", cur)
 	return cur, nil
+}
+
+// lastAnswerDays is how old an answer a challenged currency check may fall
+// back on. Stores rarely change their markets; a year covers that.
+const lastAnswerDays = 365
+
+// keepLastAnswer is presented's answer when the store puts a bot challenge in
+// front of its home page (14 Nov 2026: Harney, while our bot registration
+// with Shopify is pending). The check is a weekly side read, and failing the
+// whole store over it also stopped the read of the market that needs no
+// check: Harney shows USD everywhere and its US catalog had been read every
+// day. With an earlier answer, that answer stands and is saved again, so the
+// home page is asked once a week, not daily; a store that challenges us
+// would not answer differently tomorrow. Without one, the challenge is
+// returned as before and counts for the breaker. A 429 does not come here:
+// Shopify asks us to wait out Retry-After, not to move on to the catalog.
+func (r *Runner) keepLastAnswer(ctx context.Context, store currencyStore, slug string, m market.Market, challenge error) (string, error) {
+	last, err := store.PresentedCurrency(ctx, db.PresentedCurrencyParams{Slug: slug, Market: m.Key, MaxAgeDays: lastAnswerDays})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", challenge
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := store.SavePresentedCurrency(ctx, db.SavePresentedCurrencyParams{Slug: slug, Market: m.Key, Currency: last}); err != nil {
+		return "", err
+	}
+	r.Log.Warn("currency check challenged; keeping the last answer for another week",
+		"roaster", slug, "market", m.Key, "presents", last, "err", challenge)
+	return last, nil
 }
 
 func nonEmpty(s string) *string {
