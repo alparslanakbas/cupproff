@@ -121,6 +121,22 @@ func TestSectionRoutes(t *testing.T) {
 	}
 }
 
+// The tab icon: /favicon.ico at the root (browsers ask for it whatever the
+// page links) and the SVG the page links, both as icons with a day's cache.
+func TestFaviconRoutes(t *testing.T) {
+	h := (&Server{SiteURL: "http://x", Log: slog.New(slog.DiscardHandler)}).Handler()
+	for path, want := range map[string]string{"/favicon.ico": "image/x-icon", "/static/favicon.svg": "image/svg+xml"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), want) {
+			t.Errorf("%s = %d %q, want 200 %s", path, rec.Code, rec.Header().Get("Content-Type"), want)
+		}
+		if !strings.Contains(rec.Header().Get("Cache-Control"), "max-age=86400") {
+			t.Errorf("%s Cache-Control = %q, want a day", path, rec.Header().Get("Cache-Control"))
+		}
+	}
+}
+
 func TestCDNImageResizesOnlyShopify(t *testing.T) {
 	got := cdnImage("https://cdn.shopify.com/s/files/a.png?v=1", 480)
 	if !strings.Contains(got, "width=480") || !strings.Contains(got, "v=1") {

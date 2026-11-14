@@ -54,12 +54,18 @@ func (s *Server) Handler() http.Handler {
 		views.ScriptURL = "/static/site.js?v=" + hex.EncodeToString(sum[:4])
 	}
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	_ = mime.AddExtensionType(".ico", "image/x-icon")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /robots.txt", s.robots)
 	mux.HandleFunc("GET /sitemap.xml", s.sitemap)
 	mux.HandleFunc("GET /sw.js", serviceWorker(buildVersion()))
+	// Browsers ask for /favicon.ico at the root whatever the page links;
+	// without it the tab showed a blank globe (14 Nov 2026).
+	mux.Handle("GET /favicon.ico", cacheFor(24*time.Hour, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, static, "favicon.ico")
+	})))
 	mux.Handle("GET /static/{file}", http.StripPrefix("/static/", cacheFor(24*time.Hour, files)))
 	// ServeMux would add the trailing slash with a 307 (temporary) redirect
 	// (Go 1.26+). Canonical moves must be permanent, so it is done here.
