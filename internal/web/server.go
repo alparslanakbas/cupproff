@@ -734,7 +734,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		Description: i18n.T(lang, "product.desc", "title", c.Title, "roaster", c.RoasterName),
 		Canonical:   url,
 		JSONLD:      string(ldJSON),
-		NoIndex:     !inStockRecently,
+		NoIndex:     !inStockRecently || !indexedVersion(m),
 		Nav:         nav(m, k.name),
 	}
 	// The same coffee's page in the other markets where it is sold now; the
@@ -749,6 +749,7 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 		paths[code] = "/" + code + "/" + k.segment + "/" + c.Slug
 	}
 	p = s.inMarkets(p, m, k, paths, paths[market.US.Key])
+	p.Alternates = indexedAlternates(p.Alternates)
 	view.Ref = m.Key + "/" + k.segment + "/" + c.Slug
 	watched, compared := picks(r.Context())
 	view.Watched, view.Compared = watched[view.Ref], slices.Contains(compared, view.Ref)
@@ -791,6 +792,30 @@ func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 		"Disallow: /*/watchlist\nDisallow: /*/compare\n\nSitemap: %s/sitemap.xml\n", s.SiteURL)
 }
 
+// indexedVersion tells whether a market version's product pages are indexed:
+// only the English ones (24 Nov). The translated product pages repeated
+// thousands of rows with only the interface translated: 9,528 of the
+// sitemap's 17,215 addresses. Google first read them on 9 Nov, mostly the
+// Portuguese, Dutch and Spanish ones, and on 12 Nov the site's impressions
+// fell from ~450 a day to 18, the pattern of WheyProof's drop after its
+// product pairs (25 Oct). Visitors keep the translated pages and the language
+// button; the market's home, lists, categories, brands, guides and tools stay
+// indexed in every language, the local pages a searcher lands on.
+func indexedVersion(m market.Market) bool { return m.Language() == "en" }
+
+// indexedAlternates keeps the hreflang alternates of a product page that are
+// indexed: its English versions and x-default. Naming pages that ask not to be
+// indexed as alternates would contradict them.
+func indexedAlternates(alts []views.Alternate) []views.Alternate {
+	var out []views.Alternate
+	for _, a := range alts {
+		if a.Lang == "x-default" || a.Lang == "en" || strings.HasPrefix(a.Lang, "en-") {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" + `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
@@ -824,6 +849,11 @@ func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, br := range brands {
 				fmt.Fprintf(&b, "<url><loc>%s/%s/brands/%s</loc></url>\n", s.SiteURL, v.Code, br.Slug)
+			}
+			// Product pages only in English: the translated ones are noindex
+			// (see indexedVersion).
+			if !indexedVersion(v) {
+				continue
 			}
 			for _, c := range rows {
 				fmt.Fprintf(&b, "<url><loc>%s/%s/%s/%s</loc><lastmod>%s</lastmod></url>\n",
