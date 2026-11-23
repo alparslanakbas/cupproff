@@ -60,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /robots.txt", s.robots)
 	mux.HandleFunc("GET /sitemap.xml", s.sitemap)
+	mux.HandleFunc("GET /sitemap-noindex.xml", s.noindexSitemap)
 	mux.HandleFunc("GET /sw.js", serviceWorker(buildVersion()))
 	// Browsers ask for /favicon.ico at the root whatever the page links;
 	// without it the tab showed a blank globe (14 Nov 2026).
@@ -814,6 +815,40 @@ func indexedAlternates(alts []views.Alternate) []views.Alternate {
 		}
 	}
 	return out
+}
+
+// noindexSitemap lists the translated product pages that turned noindex on 24
+// Nov, dated that day. Google drops a noindex page only after fetching it
+// again, and since the 12 Nov drop it reads 40-130 of the site's pages a day:
+// on its own it would take months to see these. Temporary, the sister site's
+// way (WheyProof b3a174c): submitted to Search Console alone, not named in
+// robots.txt or /sitemap.xml. Remove it once the pages have left the index.
+func (s *Server) noindexSitemap(w http.ResponseWriter, r *http.Request) {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" + `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	segment := map[string]string{}
+	for _, k := range kinds {
+		segment[k.name] = k.segment
+	}
+	for _, m := range market.All {
+		rows, err := s.Q.SitemapCoffees(r.Context(), m.Key)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		for _, v := range m.Versions() {
+			if indexedVersion(v) {
+				continue
+			}
+			for _, c := range rows {
+				fmt.Fprintf(&b, "<url><loc>%s/%s/%s/%s</loc><lastmod>2026-11-24</lastmod></url>\n",
+					s.SiteURL, v.Code, segment[c.Kind], c.Slug)
+			}
+		}
+	}
+	b.WriteString("</urlset>\n")
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	io.WriteString(w, b.String())
 }
 
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
