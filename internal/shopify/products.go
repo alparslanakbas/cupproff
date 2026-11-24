@@ -74,6 +74,12 @@ var notCoffee = regexp.MustCompile(`(?i)\b(mugs?|tumblers?|bottles?|carafes?|ket
 	`t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|subscriptions?|merch(andise)?|equipment|apparel|accessor(y|ies)|unroasted|` +
 	`wholesale|recurring|installments?|monthly|(gift|discovery|experience) box(es)?|packs?|(travel|hot|cold|paper|coffee|camp) cups?|` +
 	`creamers?|granulated|panela sugar|matcha|keepcup|huskee|airscape|jugs?|pitchers?|` +
+	// Read from the live catalog on 24 Nov 2026: Clifton's "Coffee Storage Tin
+	// (250g)", Bonanza's "RE-USE & REFILL JAR" (400 g), Belleville's espresso
+	// machine descaler ("Détartrant … 6 x 25g"), and sets that put several
+	// coffees under one price: "Gift Set" (Artisan Roast), "Tasting Box" (Drop),
+	// "Sample Box" (Ditta), "Sélection Découverte (3 X 250g)" (Belleville).
+	`storage|jars?|descal\w*|d[ée]tartrants?|entkalk\w*|gift ?sets?|tasting box(es)?|sample box(es)?|d[ée]couverte|` +
 	// EU round (14 Oct 2026; stores write in German, French, Spanish, Finnish):
 	// subscriptions ("Abo 12 Monate", Finnish "vakiotilaus"), a public cupping
 	// event, gear sold by brand or by French name (moulin = grinder), VST
@@ -153,17 +159,21 @@ const (
 var notTeaType = regexp.MustCompile(`(?i)\b(tea ?wares?|wares|utensils|pottery|ceramics|porcelain|teapots?|cups?|bowls?|mugs?|` +
 	`table|home|candles?|incense|bath|body|accessor(y|ies)|gifts?|gift ?sets?|gift ?cards?|bundles?|variety packs?|assorted|` +
 	`merch(andise)?|apparel|subscriptions?|membership|club|events?|snacks|sparkling|concentrates?|water|wholesale|equipment|` +
-	`honey|jam|coffee|hidden|collections?|tickets?|paper)\b`)
+	`honey|jam|coffee|hidden|collections?|tickets?|paper|packaging)\b`)
 
 // UK round (13 Oct 2026): Tregothnan sells honey and jam by weight, and
 // Tregothnan and Waterloo Tea list coffee; a "Hidden" type is a product the
-// store keeps off its own shelves.
+// store keeps off its own shelves. Yunnan Sourcing types its pu-erh wrapping
+// paper "Packaging"; "357-400 Gram Cakes" in its title read as 400 g of tea
+// and made it the brand's cheapest tea per 100 g (4 Nov 2026, fixed 24 Nov).
 
 var notTea = regexp.MustCompile(`(?i)\b(teapots?|kettles?|infusers?|strainers?|mugs?|cups?|bowls?|whisks?|scoops?|` +
 	`candles?|incense|t-shirts?|shirts?|hats?|totes?|hoodies?|gift ?cards?|sets?|kits?|samplers?|variety|assortment|` +
-	`flights?|subscriptions?|membership|chocolates?|cookies?|shortbread|biscuits?|wholesale|green coffee)\b`)
+	`flights?|subscriptions?|membership|chocolates?|cookies?|shortbread|biscuits?|wholesale|green coffee|wrapping)\b`)
 
-// "honey" is deliberately absent: "Phoenix Honey Orchid" is an oolong.
+// "honey" is deliberately absent: "Phoenix Honey Orchid" is an oolong. So is
+// "wrapper": "2014 White Wrapper … Ripe Pu-erh Tea Cake" is a tea (two such
+// cakes were live on 24 Nov 2026); only "wrapping" (paper) is filtered.
 
 // A tea size that is not comparable per 100 g: a one-cup sample ("3g Sample
 // (1 Serving)", "Single brew | 5g", Rishi's "Teaser") or a box of bags whose

@@ -68,13 +68,18 @@ func TestToOffersReadsTeaHouses(t *testing.T) {
 		}},
 		// UK round: a tea estate's honey, sold by weight.
 		{Title: "Cornish Honey (Estate Floral) -113g", ProductType: "Honey", Variants: []Variant{{Title: "Default Title", Price: "12.00", Available: true}}},
+		// 24 Nov 2026: Yunnan Sourcing's wrapping paper by type and by title; a
+		// "White Wrapper" cake is a real tea and stays.
+		{Title: "Blank White Sheets of Pu-erh Wrapping Paper 357-400 Gram Cakes", ProductType: "Packaging", Variants: []Variant{{Title: "Default Title", Price: "2.00", Available: true}}},
+		{Title: "Pu-erh Wrapping Paper 357 Gram Cakes", Variants: []Variant{{Title: "Default Title", Price: "2.00", Available: true}}},
+		{Title: "2014 White Wrapper Menghai Ripe Pu-erh Tea Cake", ProductType: "Ripe Pu-erh Tea", Variants: []Variant{{Title: "1 Cake (357 Grams)", Price: "45.00", Available: true}}},
 	}
 	offers, skipped := ToOffers(products, Store{Kind: Tea})
 	var got []string
 	for _, o := range offers {
 		got = append(got, fmt.Sprintf("%s %dg", o.Title, o.WeightGrams))
 	}
-	want := []string{"Dong Ding Oolong 113g", "Jade Cloud 113g", "2019 Bulang Raw Pu-erh 357g"}
+	want := []string{"Dong Ding Oolong 113g", "Jade Cloud 113g", "2019 Bulang Raw Pu-erh 357g", "2014 White Wrapper Menghai Ripe Pu-erh Tea Cake 357g"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("offers = %v, want %v (skipped %v)", got, want, skipped)
 	}
@@ -141,6 +146,15 @@ func TestToOffersSkipsZeroPricesWholesaleAndTea(t *testing.T) {
 		{Title: "Lactose Free Coffee Creamer", Variants: []Variant{{Title: "11 oz.", Price: "3.29", Available: true}}},
 		// Coaltown's sugar topped the price-per-kg order (4 Nov 2026).
 		{Title: "Coaltown Panela Sugar 1kg", Variants: []Variant{{Title: "Default Title", Price: "9.00", Available: true}}},
+		// Live on 24 Nov 2026: a storage tin, a refill jar, a machine descaler and
+		// sets that mix several coffees.
+		{Title: "Coffee Storage Tin - Black (250g)", Variants: []Variant{{Title: "Default Title", Price: "18.00", Available: true}}},
+		{Title: "Gogogu RE-USE & REFILL JAR", ProductType: "Coffee", Variants: []Variant{{Title: "400g", Price: "25.00", Available: true}}},
+		{Title: "SAGE - Détartrant machine espresso 6 x 25g 'Nouveau'", Variants: []Variant{{Title: "Default Title", Price: "12.00", Available: true}}},
+		{Title: "Espresso Gift Set", ProductType: "Coffee", Variants: []Variant{{Title: "750g", Price: "35.00", Available: true}}},
+		{Title: "Tasting Box", ProductType: "Coffee", Variants: []Variant{{Title: "500g", Price: "40.00", Available: true}}},
+		{Title: "Roasters Choice Sample Box", ProductType: "Coffee", Variants: []Variant{{Title: "250g", Price: "30.00", Available: true}}},
+		{Title: "Sélection Découverte Espresso ( 3 X 250g )", ProductType: "Café Belleville", Variants: []Variant{{Title: "Default Title", Price: "38.00", Available: true}}},
 		{Title: "Fraction (Half-Caff - WS)", Tags: []string{"Blends", "wholesale", "wholesale-only"}, Variants: []Variant{{Title: "2lb", Price: "273.00", Available: true}}},
 		{Title: "Elefante Extended Fermentation", Variants: []Variant{
 			{Title: "12 oz", Price: "0.00", Available: true},
