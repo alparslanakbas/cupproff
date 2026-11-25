@@ -21,6 +21,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/alparslanakbas/cupproof/internal/affiliate"
 	"github.com/alparslanakbas/cupproof/internal/db"
 	"github.com/alparslanakbas/cupproof/internal/i18n"
 	"github.com/alparslanakbas/cupproof/internal/market"
@@ -36,6 +37,16 @@ type Server struct {
 	Q       *db.Queries
 	SiteURL string // canonical origin, no trailing slash
 	Log     *slog.Logger
+	// Links turns store addresses into affiliate links; nil leaves them as they are.
+	Links *affiliate.Links
+}
+
+// storeLink is a store address as a page links it: through the store's affiliate
+// programme once that programme has approved us, otherwise as it is. The flag
+// tells the page to say so and to mark the link rel="sponsored".
+func (s *Server) storeLink(address string) (string, bool) {
+	link := s.Links.Apply(address)
+	return link, link != address
 }
 
 // Handler returns the site's routes.
@@ -444,11 +455,11 @@ func (s *Server) cards(ctx context.Context, m market.Market, k kind, rows []db.L
 			RoasterURL: "/" + m.Code + "/brands/" + c.RoasterSlug,
 			Size:       c.SizeLabel, Price: money(lang, c.PriceMinor, c.Currency),
 			PerUnit:   k.perUnit(lang, c.PriceMinor, c.WeightGrams, c.Currency),
-			BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID),
 			Chart:     sparkArea(history[c.OfferID], now, 180, 48, i18n.T(lang, "chart.label", "title", c.Title)),
 			StoreNote: k.text(lang, "store_note"),
 			Ref:       m.Key + "/" + k.segment + "/" + c.Slug,
 		}
+		card.BuyURL, card.Affiliate = s.storeLink(fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, c.VariantID))
 		card.Watched, card.Compared = watched[card.Ref], slices.Contains(compared, card.Ref)
 		card.WatchURL, card.CompareURL = pickLinks(ctx, card.Ref)
 		if c.LastRead.Valid {
@@ -647,10 +658,11 @@ func (s *Server) productPage(w http.ResponseWriter, r *http.Request, k kind) {
 	ld := productLD{Context: "https://schema.org", Type: "Product", Name: c.Title,
 		Brand: &thing{Type: "Brand", Name: c.RoasterName}, Image: view.ImageURL}
 	for i, o := range rows {
-		buy := fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID)
+		buy, affiliated := s.storeLink(fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID))
 		ov := views.Offer{
 			Size: o.SizeLabel, Price: money(lang, o.PriceMinor, o.Currency), Amount: decimal(o.PriceMinor), Grams: o.WeightGrams,
 			PerUnit: k.perUnit(lang, o.PriceMinor, o.WeightGrams, o.Currency), Available: o.Available, BuyURL: buy,
+			Affiliate: affiliated,
 		}
 		if o.CompareAtMinor != nil {
 			ov.StoreWas = money(lang, *o.CompareAtMinor, o.Currency)

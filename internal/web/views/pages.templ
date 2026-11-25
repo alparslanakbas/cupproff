@@ -25,6 +25,7 @@ type Card struct {
 	Chart        string // inline SVG, "" with fewer than two readings
 	Reading      string // one sentence: what today's price means
 	BuyURL       string
+	Affiliate    bool   // BuyURL goes through the store's affiliate programme
 	Checked      string // when the store's prices were last read
 	StoreNote    string // "The roaster's own shop"
 	Market       string // "US": on the watchlist and the comparison
@@ -115,6 +116,7 @@ type Offer struct {
 	LowestSince string // set when it is also the lowest since tracking began (30+ days)
 	Available   bool
 	BuyURL      string
+	Affiliate   bool   // BuyURL goes through the store's affiliate programme
 	Chart       string // inline SVG from sparkline, "" when there is no history yet
 	Big         string // the history card's chart, same rule
 	Since       string // date of the first reading
@@ -271,7 +273,7 @@ templ productRow(c Card, labels Labels) {
 		<div class="deal-store">
 			<div class="store-name">{ c.Roaster }</div>
 			<div class="store-type">{ c.StoreNote }</div>
-			<a class="btn btn-primary" href={ templ.SafeURL(c.BuyURL) } rel="nofollow">
+			<a class="btn btn-primary" href={ templ.SafeURL(c.BuyURL) } rel={ storeRel(c.Affiliate) }>
 				{ labels.Buy }
 				@icon("external")
 			</a>
@@ -384,7 +386,7 @@ templ featuredDeal(c Card, chart string, labels Labels) {
 			}
 		</div>
 		<div class="featured-actions">
-			<a class="btn btn-primary" href={ templ.SafeURL(c.BuyURL) } rel="nofollow">
+			<a class="btn btn-primary" href={ templ.SafeURL(c.BuyURL) } rel={ storeRel(c.Affiliate) }>
 				{ labels.Buy }
 				@icon("external")
 			</a>
@@ -784,11 +786,14 @@ templ sizeSheet(c Coffee, i int) {
 				}
 			</div>
 		</dl>
-		<a class="btn btn-primary btn-block" href={ templ.SafeURL(s.BuyURL) } rel="nofollow">
+		<a class="btn btn-primary btn-block" href={ templ.SafeURL(s.BuyURL) } rel={ storeRel(s.Affiliate) }>
 			{ c.Labels.Buy }
 			@icon("external")
 		</a>
 		<p class="sheet-note">{ tr(ctx, "product.sheet_note", "date", c.Checked, "store_note", c.Labels.StoreNote) }</p>
+		if s.Affiliate {
+			<p class="sheet-note">{ tr(ctx, "affiliate.note") }</p>
+		}
 	</section>
 }
 

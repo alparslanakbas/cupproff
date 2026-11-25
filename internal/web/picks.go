@@ -176,9 +176,9 @@ func (s *Server) cardFor(ctx context.Context, ref string) (views.Card, bool, err
 	card := views.Card{
 		URL: "/" + m.Code + "/" + k.segment + "/" + c.Slug, Title: c.Title, Roaster: c.RoasterName,
 		Size: o.SizeLabel, Price: money(lang, o.PriceMinor, o.Currency), PerUnit: k.perUnit(lang, o.PriceMinor, o.WeightGrams, o.Currency),
-		BuyURL:    fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID),
 		StoreNote: k.text(lang, "store_note"), Ref: ref, Market: m.Short, OutOfStock: !o.Available,
 	}
+	card.BuyURL, card.Affiliate = s.storeLink(fmt.Sprintf("%s/products/%s?variant=%d", c.RoasterUrl, c.Handle, o.VariantID))
 	watched, compared := picks(ctx)
 	card.Watched, card.Compared = watched[ref], slices.Contains(compared, ref)
 	card.WatchURL, card.CompareURL = pickLinks(ctx, ref)

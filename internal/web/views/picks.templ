@@ -101,7 +101,7 @@ templ Compare(p Page, cards []Card, clearURL string) {
 							<th scope="row"><span class="sr-only">{ tr(ctx, "compare.row.link") }</span></th>
 							for _, c := range cards {
 								<td>
-									<a class="btn btn-primary btn-block" href={ templ.SafeURL(c.BuyURL) } rel="nofollow">
+									<a class="btn btn-primary btn-block" href={ templ.SafeURL(c.BuyURL) } rel={ storeRel(c.Affiliate) }>
 										{ tr(ctx, "picks.go_store") }
 										@icon("external")
 									</a>

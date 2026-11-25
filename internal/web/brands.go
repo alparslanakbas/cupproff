@@ -126,9 +126,10 @@ func (s *Server) brandPage(w http.ResponseWriter, r *http.Request) {
 	p = s.inMarkets(p, m, k, paths, "")
 
 	unit := k.text(lang, "best_unit")
+	storeURL, storeAffiliate := s.storeLink(store.BaseUrl)
 	v := views.Brand{
 		Name: store.Name, Monogram: monogram(store.Name), Tone: tone(store.Slug),
-		Market: m.Short, Kind: k.name, Noun: k.name + "s", StoreURL: store.BaseUrl,
+		Market: m.Short, Kind: k.name, Noun: k.name + "s", StoreURL: storeURL, StoreAffiliate: storeAffiliate,
 		Coffees: me.Coffees, Drops: me.Drops, Sales: me.Sales,
 		BestLabel: unit, Best: k.perUnit(lang, me.BestPrice, me.BestGrams, m.Currency),
 		Deals: st.deals, Labels: k.labels(lang), Others: others,

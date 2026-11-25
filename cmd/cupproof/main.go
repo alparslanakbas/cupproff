@@ -26,6 +26,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/alparslanakbas/cupproof/internal/affiliate"
 	"github.com/alparslanakbas/cupproof/internal/db"
 	"github.com/alparslanakbas/cupproof/internal/ingest"
 	"github.com/alparslanakbas/cupproof/internal/market"
@@ -76,10 +77,16 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+	// Store links go through the programmes that approved us (affiliate.Rules);
+	// AFFILIATE_FALLBACK is the network redirect for every other store (Sovrn,
+	// once coffeeproof.org is approved there), empty until then.
+	links := affiliate.New(affiliate.Rules, os.Getenv("AFFILIATE_FALLBACK"))
+	log.Info("affiliate links", "stores", links.Hosts(), "fallback", links.HasFallback())
 	s := &web.Server{
 		Q:       db.New(pool),
 		SiteURL: strings.TrimSuffix(envOr("SITE_URL", "http://localhost:8080"), "/"),
 		Log:     log,
+		Links:   links,
 	}
 	srv := &http.Server{
 		Addr:              envOr("ADDR", "127.0.0.1:8080"),

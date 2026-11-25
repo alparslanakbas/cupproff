@@ -106,7 +106,7 @@ templ glossary() {
 	}
 }
 
-var privacySections = []string{"who", "none", "log", "cloudflare", "photos", "cookies", "rights"}
+var privacySections = []string{"who", "none", "log", "cloudflare", "affiliate", "photos", "cookies", "rights"}
 
 var termsSections = []string{"prices", "badges", "buying", "names", "guides", "changes"}
 
@@ -137,4 +137,5 @@ templ cookies() {
 	</div>
 	<p>{ tr(ctx, "cookies.p1") }</p>
 	<p>{ tr(ctx, "cookies.p2") }</p>
+	<p>{ tr(ctx, "cookies.p3") }</p>
 }

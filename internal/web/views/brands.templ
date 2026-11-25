@@ -35,7 +35,9 @@ type Brand struct {
 	Kind      string // "coffee" or "tea"
 	Noun      string // "coffees" or "teas"
 	StoreURL  string
-	BrandsURL string
+	// StoreAffiliate: StoreURL goes through the store's affiliate programme.
+	StoreAffiliate bool
+	BrandsURL      string
 	Coffees   int64
 	Drops     int64
 	Sales     int64
@@ -130,7 +132,7 @@ templ brandHero(b Brand) {
 				<h1>{ tr(ctx, "brand.heading", "store", b.Name) }</h1>
 				<p class="lede">{ tr(ctx, "brand.lede", "store", b.Name, "market", b.Market) }</p>
 				<div class="actions">
-					<a class="btn btn-primary" href={ templ.SafeURL(b.StoreURL) } rel="nofollow">
+					<a class="btn btn-primary" href={ templ.SafeURL(b.StoreURL) } rel={ storeRel(b.StoreAffiliate) }>
 						{ tr(ctx, "brand.visit", "store", b.Name) }
 						@icon("external")
 					</a>
